@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 
 interface HorseData {
   wakuban: number;
@@ -43,14 +43,14 @@ interface RaceResult {
 }
 
 export default function Home() {
-  const [raceId, setRaceId] = useState('202305021211');
+  const [raceId, setRaceId] = useState('202605040411');
   const [fetching, setFetching] = useState(false);
 
   const [targetRaceName, setTargetRaceName] = useState('');
   const [targetPlace, setTargetPlace] = useState('');
 
   const [courseType, setCourseType] = useState('芝');
-  const [distance, setDistance] = useState(2400);
+  const [distance, setDistance] = useState(2000);
   const [weather, setWeather] = useState('晴');
   const [trackCondition, setTrackCondition] = useState('良');
   const [expectedPace, setExpectedPace] = useState('M');
@@ -69,31 +69,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [isRacing, setIsRacing] = useState(false);
   const [showResults, setShowResults] = useState(false); 
-  const [animationStyles, setAnimationStyles] = useState(''); 
-
-  // ▼▼ ここから追加：スマホ画面リサイズ対応のための設定 ▼▼
-  const trackContainerRef = useRef<HTMLDivElement>(null);
-  const [trackScale, setTrackScale] = useState(1);
-
-  useEffect(() => {
-    if (!isRacing) return;
-    const updateScale = () => {
-      if (trackContainerRef.current) {
-        // コンテナの幅を取得し、800px未満なら自動的に縮小率を計算する
-        const availableWidth = trackContainerRef.current.clientWidth;
-        setTrackScale(availableWidth < 800 ? availableWidth / 800 : 1);
-      }
-    };
-    updateScale();
-    // 画面表示直後のズレを防ぐため、少し待ってから再計算
-    const timer = setTimeout(updateScale, 100);
-    window.addEventListener('resize', updateScale);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('resize', updateScale);
-    };
-  }, [isRacing]);
-  // ▲▲ 追加ここまで ▲▲
 
   const handleFetchRace = async () => {
     if (!raceId) {
@@ -187,46 +162,6 @@ export default function Home() {
     }
   };
 
-  const generateTrackingAnimations = (ranking: RaceResult[], currentHorses: HorseData[]) => {
-    let styles = `
-      @keyframes popIn {
-        from { opacity: 0; transform: scale(0.95); }
-        to { opacity: 1; transform: scale(1); }
-      }
-    `;
-    
-    ranking.forEach((result) => {
-      const horse = currentHorses.find(h => h.umaban === result.umaban);
-      const kyakushitsu = horse ? horse.kyakushitsu : 2;
-
-      let p1 = 0; let p2 = 0;
-      
-      if (kyakushitsu == 1) p1 = 37.0; 
-      else if (kyakushitsu == 2) p1 = 34.5; 
-      else if (kyakushitsu == 3) p1 = 33.5; 
-      else p1 = 32.5; 
-      p1 += (Math.random() * 1.2 - 0.6); 
-
-      if (kyakushitsu == 1) p2 = 72.0; 
-      else if (kyakushitsu == 2) p2 = 70.0;
-      else if (kyakushitsu == 3) p2 = 69.0;
-      else p2 = 68.0;
-      p2 += (Math.random() * 1.2 - 0.6);
-
-      const finalPos = 105; 
-
-      styles += `
-        @keyframes tracking-${result.umaban} {
-          0% { offset-distance: 0%; }
-          35% { offset-distance: ${p1}%; }
-          70% { offset-distance: ${p2}%; }
-          100% { offset-distance: ${finalPos}%; }
-        }
-      `;
-    });
-    return styles;
-  };
-
   const handleSimulate = async () => {
     setLoading(true);
     setShowResults(false);
@@ -250,9 +185,6 @@ export default function Home() {
       if (!response.ok) throw new Error('API通信エラー');
 
       const data = await response.json();
-      
-      const generatedStyles = generateTrackingAnimations(data.ranking, horses);
-      setAnimationStyles(generatedStyles);
       setResults(data.ranking);
       
       setIsRacing(true);
@@ -269,6 +201,7 @@ export default function Home() {
     }
   };
 
+  // 通常のHTML用カラー
   const getHorseColor = (umaban: number) => {
     const colors = [
       'bg-white text-gray-900 border-gray-300',
@@ -283,15 +216,30 @@ export default function Home() {
     return colors[(umaban - 1) % 8] || 'bg-gray-500 text-white';
   };
 
+  // ▼ 新規：SVGアニメーション専用のカラーコード
+  const getHorseSvgColors = (umaban: number) => {
+    const colors = [
+      { bg: '#ffffff', text: '#111827', border: '#d1d5db' }, 
+      { bg: '#111827', text: '#ffffff', border: '#374151' }, 
+      { bg: '#dc2626', text: '#ffffff', border: '#991b1b' }, 
+      { bg: '#2563eb', text: '#ffffff', border: '#1e40af' }, 
+      { bg: '#facc15', text: '#111827', border: '#ca8a04' }, 
+      { bg: '#16a34a', text: '#ffffff', border: '#166534' }, 
+      { bg: '#f97316', text: '#ffffff', border: '#c2410c' }, 
+      { bg: '#f472b6', text: '#111827', border: '#db2777' }  
+    ];
+    return colors[(umaban - 1) % 8] || { bg: '#6b7280', text: '#ffffff', border: '#374151' };
+  };
+
   return (
-    <main className="min-h-screen bg-gray-900 text-white p-6 font-sans pb-20">
+    <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2 text-center text-red-500">PRO仕様 競馬本格シミュレーター</h1>
-        <p className="text-center text-gray-400 mb-8 text-sm font-bold">
+        <h1 className="text-2xl md:text-3xl font-bold mb-2 text-center text-red-500">PRO仕様 競馬本格シミュレーター</h1>
+        <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
           [ 展開 × トラックバイアス × 騎手適性 × オッズ期待値 ]
         </p>
 
-        <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
+        <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-grow w-full">
             <label className="text-sm text-gray-400 block mb-2 font-bold">
               STEP 1: 🌐 ネットから出馬表と環境データを自動取得
@@ -300,73 +248,73 @@ export default function Home() {
               type="text" 
               value={raceId} 
               onChange={e => setRaceId(e.target.value)} 
-              className="w-full bg-gray-900 text-white rounded-lg p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600 font-mono text-lg"
-              placeholder="例: 202305021211" 
+              className="w-full bg-gray-900 text-white rounded-lg p-3 md:p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600 font-mono text-lg"
+              placeholder="例: 202605040411" 
             />
           </div>
           <button 
             onClick={handleFetchRace} 
             disabled={fetching} 
-            className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-8 rounded-lg shadow-lg transition whitespace-nowrap disabled:opacity-50"
+            className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 md:py-4 px-8 rounded-lg shadow-lg transition whitespace-nowrap disabled:opacity-50"
           >
             {fetching ? '通信中...' : '出馬表を取り込む ↓'}
           </button>
         </div>
 
-        <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
-          <h2 className="text-xl font-semibold mb-4 text-gray-300">STEP 2: レース環境 ＆ 展開・バイアス設定</h2>
+        <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
+          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-300">STEP 2: レース環境 ＆ 展開・バイアス設定</h2>
           
           {targetRaceName && (
-            <div className="mb-6 p-5 bg-gray-900 border border-yellow-600/50 rounded-lg shadow-inner flex flex-col md:flex-row items-center justify-between">
-              <div className="flex flex-col">
+            <div className="mb-6 p-4 md:p-5 bg-gray-900 border border-yellow-600/50 rounded-lg shadow-inner flex flex-col md:flex-row items-center justify-between gap-3">
+              <div className="flex flex-col w-full">
                 <span className="text-yellow-500 font-bold text-xs mb-1 tracking-wider">TARGET RACE</span>
-                <h3 className="text-2xl font-extrabold text-white">{targetRaceName}</h3>
+                <h3 className="text-xl md:text-2xl font-extrabold text-white leading-tight">{targetRaceName}</h3>
               </div>
-              <div className="mt-3 md:mt-0 text-right">
-                <span className="inline-block bg-green-800 text-green-100 font-bold px-4 py-2 rounded-full text-sm border border-green-600 shadow-sm">
+              <div className="text-left md:text-right w-full md:w-auto">
+                <span className="inline-block bg-green-800 text-green-100 font-bold px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm border border-green-600 shadow-sm">
                   📍 {targetPlace}競馬場 / {courseType}{distance}m
                 </span>
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4">
             <div>
-              <label className="text-sm text-gray-400 block mb-1">コース</label>
-              <select value={courseType} onChange={e => setCourseType(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2.5 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500">
+              <label className="text-xs md:text-sm text-gray-400 block mb-1">コース</label>
+              <select value={courseType} onChange={e => setCourseType(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base">
                 <option value="芝">芝</option><option value="ダ">ダート</option><option value="障">障害</option>
               </select>
             </div>
             <div>
-              <label className="text-sm text-gray-400 block mb-1">距離 (m)</label>
-              <input type="number" step="100" value={distance} onChange={e => setDistance(Number(e.target.value))} className="w-full bg-gray-900 text-white rounded p-2.5 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500" />
+              <label className="text-xs md:text-sm text-gray-400 block mb-1">距離 (m)</label>
+              <input type="number" step="100" value={distance} onChange={e => setDistance(Number(e.target.value))} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base" />
             </div>
             <div>
-              <label className="text-sm text-gray-400 block mb-1">天候</label>
-              <select value={weather} onChange={e => setWeather(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2.5 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500">
+              <label className="text-xs md:text-sm text-gray-400 block mb-1">天候</label>
+              <select value={weather} onChange={e => setWeather(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base">
                 <option value="晴">晴</option><option value="曇">曇</option><option value="雨">雨</option><option value="小雨">小雨</option><option value="雪">雪</option><option value="小雪">小雪</option>
               </select>
             </div>
             <div>
-              <label className="text-sm text-gray-400 block mb-1">馬場状態</label>
-              <select value={trackCondition} onChange={e => setTrackCondition(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2.5 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500">
+              <label className="text-xs md:text-sm text-gray-400 block mb-1">馬場状態</label>
+              <select value={trackCondition} onChange={e => setTrackCondition(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base">
                 <option value="良">良</option><option value="稍">稍重 (稍)</option><option value="重">重</option><option value="不">不良 (不)</option>
               </select>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-900 p-4 rounded-lg border border-gray-700">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-6 bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700">
             <div>
-              <label className="text-sm text-orange-400 font-bold block mb-1">予想ペース (展開)</label>
-              <select value={expectedPace} onChange={e => setExpectedPace(e.target.value)} className="w-full bg-orange-900 text-white font-bold rounded p-2.5 border border-orange-600 focus:outline-none focus:ring-1 focus:ring-orange-500 shadow-[0_0_10px_rgba(234,88,12,0.3)]">
+              <label className="text-xs md:text-sm text-orange-400 font-bold block mb-1">予想ペース (展開)</label>
+              <select value={expectedPace} onChange={e => setExpectedPace(e.target.value)} className="w-full bg-orange-900 text-white font-bold rounded p-2 border border-orange-600 focus:outline-none focus:ring-1 focus:ring-orange-500 shadow-[0_0_10px_rgba(234,88,12,0.3)] text-sm md:text-base">
                 <option value="H">ハイペース (前がキツくなる)</option>
                 <option value="M">ミドルペース (標準)</option>
                 <option value="S">スローペース (前が楽になる)</option>
               </select>
             </div>
             <div>
-              <label className="text-sm text-pink-400 font-bold block mb-1">トラックバイアス (馬場傾向)</label>
-              <select value={trackBias} onChange={e => setTrackBias(e.target.value)} className="w-full bg-pink-900 text-white font-bold rounded p-2.5 border border-pink-600 focus:outline-none focus:ring-1 focus:ring-pink-500 shadow-[0_0_10px_rgba(219,39,119,0.3)]">
+              <label className="text-xs md:text-sm text-pink-400 font-bold block mb-1">トラックバイアス (馬場傾向)</label>
+              <select value={trackBias} onChange={e => setTrackBias(e.target.value)} className="w-full bg-pink-900 text-white font-bold rounded p-2 border border-pink-600 focus:outline-none focus:ring-1 focus:ring-pink-500 shadow-[0_0_10px_rgba(219,39,119,0.3)] text-sm md:text-base">
                 <option value="フラット">フラット (標準)</option>
                 <option value="前残り (逃げ・先行有利)">前残り (逃げ・先行有利)</option>
                 <option value="差し有利 (外伸び)">差し有利 (外伸び)</option>
@@ -376,43 +324,43 @@ export default function Home() {
             </div>
           </div>
           
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-2 gap-3 md:gap-4">
             {horses.map((horse, index) => (
-              <div key={index} className="bg-gray-900 p-4 rounded-lg border border-gray-700 flex gap-4 items-start">
-                <div className={`mt-1 w-8 h-8 flex items-center justify-center font-bold rounded-full shadow-md flex-shrink-0 ${getHorseColor(horse.umaban)}`}>
+              <div key={index} className="bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700 flex gap-2 md:gap-4 items-start">
+                <div className={`mt-0.5 md:mt-1 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-bold text-sm md:text-base rounded-full shadow-md flex-shrink-0 ${getHorseColor(horse.umaban)}`}>
                   {horse.umaban}
                 </div>
                 <div className="flex-grow flex flex-col gap-2 w-full">
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap md:flex-nowrap gap-1.5 md:gap-2">
                     <input 
                       type="text" 
                       value={horse.bamei} 
                       onChange={(e) => handleChange(index, 'bamei', e.target.value)} 
                       placeholder="馬名"
-                      className="w-1/3 bg-gray-700 text-white font-bold rounded p-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                      className="w-[45%] md:w-1/3 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" 
                     />
                     <input 
                       type="text" 
                       value={horse.kishu} 
                       onChange={(e) => handleChange(index, 'kishu', e.target.value)} 
                       placeholder="騎手"
-                      className="w-1/4 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 border border-blue-800/50" 
+                      className="w-[45%] md:w-1/4 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 border border-blue-800/50" 
                     />
-                    <div className="w-1/5 relative">
+                    <div className="w-[45%] md:w-1/5 relative">
                       <input 
                         type="number" 
                         step="0.1"
                         value={horse.odds || ''} 
                         onChange={(e) => handleChange(index, 'odds', e.target.value)} 
                         placeholder="オッズ"
-                        className="w-full bg-gray-700 text-yellow-300 font-bold rounded p-1.5 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500 border border-yellow-800/50 text-right" 
+                        className="w-full bg-gray-700 text-yellow-300 font-bold rounded p-1.5 pr-4 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500 border border-yellow-800/50 text-right" 
                       />
-                      <span className="absolute right-1 top-2 text-[10px] text-yellow-500">倍</span>
+                      <span className="absolute right-1 top-1.5 text-[9px] md:text-[10px] text-yellow-500">倍</span>
                     </div>
                     <select 
                       value={horse.kyakushitsu} 
                       onChange={(e) => handleChange(index, 'kyakushitsu', e.target.value)} 
-                      className="w-1/5 bg-purple-900 text-purple-200 text-xs font-bold rounded p-1 focus:outline-none border border-purple-700"
+                      className="w-[45%] md:w-1/5 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1 focus:outline-none border border-purple-700"
                     >
                       <option value="1">逃げ</option>
                       <option value="2">先行</option>
@@ -425,84 +373,84 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="mt-2 text-xs text-yellow-400 font-bold text-right">
+          <div className="mt-3 text-[10px] md:text-xs text-yellow-400 font-bold text-right leading-tight">
             ※ 未来のレースを予想する場合は、JRA発表の「単勝オッズ」を手動で入力してください。
           </div>
 
-          <button onClick={addHorse} className="w-full mt-4 border-2 border-dashed border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 py-2 rounded-lg transition">
+          <button onClick={addHorse} className="w-full mt-4 border-2 border-dashed border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 py-2 rounded-lg transition text-sm">
             ＋ 出走馬を手動で追加する
           </button>
 
-          <button onClick={handleDiagnose} disabled={isDiagnosing || horses.length < 2} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-lg mt-8 shadow-lg text-lg transition duration-200 disabled:opacity-50">
+          <button onClick={handleDiagnose} disabled={isDiagnosing || horses.length < 2} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 md:py-4 rounded-lg mt-6 shadow-lg text-sm md:text-lg transition duration-200 disabled:opacity-50">
             {isDiagnosing ? '過去のデータを分析中...' : '📊 指定展開・バイアス・オッズ期待値で全頭診断を実行！'}
           </button>
         </div>
 
         {diagnosisResults && raceInfo && (
-          <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
-            <h2 className="text-2xl font-bold mb-4 text-indigo-400">STEP 3: 📊 AI全頭診断 ＆ 期待値レポート</h2>
+          <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
+            <h2 className="text-xl md:text-2xl font-bold mb-4 text-indigo-400">STEP 3: 📊 AI全頭診断 ＆ 期待値レポート</h2>
             
-            <div className="flex flex-col md:flex-row justify-center gap-6 text-sm font-bold text-red-400 mb-6 bg-gray-900 p-4 rounded-lg border border-gray-700">
+            <div className="flex flex-col md:flex-row justify-center gap-2 md:gap-6 text-xs md:text-sm font-bold text-red-400 mb-6 bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700">
               <p>【{expectedPace === 'H' ? 'ハイ' : expectedPace === 'S' ? 'スロー' : 'ミドル'}想定】 前半 {raceInfo.pace_f}秒 / 後半 {raceInfo.pace_l}秒</p>
-              <p>馬場傾向: <span className="text-pink-400 bg-pink-900/30 px-2 py-1 rounded border border-pink-700/50">{trackBias}</span></p>
-              <p>要求タイム: <span className="text-xl text-yellow-400">{raceInfo.req_up}秒</span></p>
+              <p>馬場傾向: <span className="text-pink-400 bg-pink-900/30 px-2 py-0.5 rounded border border-pink-700/50">{trackBias}</span></p>
+              <p>要求タイム: <span className="text-lg md:text-xl text-yellow-400">{raceInfo.req_up}秒</span></p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
               {diagnosisResults.map((horse, index) => (
-                <div key={index} className="bg-gray-900 p-4 rounded-lg border border-gray-700 flex flex-col gap-3 relative overflow-hidden">
+                <div key={index} className="bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700 flex flex-col gap-3 relative overflow-hidden">
                   
                   {horse.myoumi >= 60 && horse.odds >= 10 ? (
-                     <div className="absolute top-0 right-0 bg-purple-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg shadow-md">
+                     <div className="absolute top-0 right-0 bg-purple-600 text-white text-[9px] md:text-[10px] font-bold px-2 md:px-3 py-1 rounded-bl-lg shadow-md">
                         💡 穴馬推奨
                      </div>
                   ) : index < 3 ? (
-                     <div className="absolute top-0 right-0 bg-yellow-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg">
+                     <div className="absolute top-0 right-0 bg-yellow-600 text-white text-[9px] md:text-[10px] font-bold px-2 md:px-3 py-1 rounded-bl-lg">
                         AI上位
                      </div>
                   ) : null}
                   
                   <div className="flex justify-between items-center mb-1">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 flex items-center justify-center font-bold rounded-full shadow-md ${getHorseColor(horse.umaban)}`}>
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <div className={`w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-bold text-sm md:text-base rounded-full shadow-md ${getHorseColor(horse.umaban)}`}>
                         {horse.umaban}
                       </div>
-                      <span className="text-lg font-bold">{horse.bamei}</span>
+                      <span className="text-base md:text-lg font-bold">{horse.bamei}</span>
                     </div>
-                    <div className="flex gap-4 text-right">
+                    <div className="flex gap-3 md:gap-4 text-right">
                       {horse.odds > 0 && (
-                        <div className="flex flex-col items-end border-r border-gray-700 pr-4">
-                          <div className="text-[10px] text-pink-400 font-bold">妙味指数 (期待値)</div>
-                          <div className={`text-2xl font-bold ${horse.myoumi >= 60 ? 'text-pink-500' : horse.myoumi >= 50 ? 'text-pink-300' : 'text-gray-500'}`}>
+                        <div className="flex flex-col items-end border-r border-gray-700 pr-3 md:pr-4">
+                          <div className="text-[9px] md:text-[10px] text-pink-400 font-bold">妙味指数 (期待値)</div>
+                          <div className={`text-xl md:text-2xl font-bold ${horse.myoumi >= 60 ? 'text-pink-500' : horse.myoumi >= 50 ? 'text-pink-300' : 'text-gray-500'}`}>
                             {horse.myoumi > 0 ? horse.myoumi.toFixed(1) : '-'}
                           </div>
                         </div>
                       )}
                       <div className="flex flex-col items-end">
-                        <div className="text-[10px] text-gray-400">AI基本指数 (能力)</div>
-                        <div className={`text-2xl font-bold ${horse.shisu >= 60 ? 'text-red-400' : horse.shisu >= 50 ? 'text-yellow-400' : 'text-gray-500'}`}>
+                        <div className="text-[9px] md:text-[10px] text-gray-400">AI基本指数 (能力)</div>
+                        <div className={`text-xl md:text-2xl font-bold ${horse.shisu >= 60 ? 'text-red-400' : horse.shisu >= 50 ? 'text-yellow-400' : 'text-gray-500'}`}>
                           {horse.shisu}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-gray-800 p-3 rounded border border-gray-700">
-                    <div className="flex justify-between mb-2">
-                       <span className="text-gray-400 text-[10px] font-bold">直近5走の戦歴 (場所・距離・馬場) / 通過 / タイム / 上り</span>
+                  <div className="bg-gray-800 p-2 md:p-3 rounded border border-gray-700 overflow-x-auto">
+                    <div className="flex justify-between mb-2 min-w-[300px]">
+                       <span className="text-gray-400 text-[9px] md:text-[10px] font-bold">直近5走の戦歴 (場所・距離・馬場) / 通過 / タイム / 上り</span>
                        {horse.odds > 0 && (
-                         <span className="text-yellow-400 text-[11px] font-bold border border-yellow-600/50 px-2 rounded">
+                         <span className="text-yellow-400 text-[10px] md:text-[11px] font-bold border border-yellow-600/50 px-1.5 md:px-2 rounded">
                            想定単勝: {horse.odds}倍
                          </span>
                        )}
                     </div>
                     {horse.history_details && horse.history_details.length > 0 ? (
-                      <div className="flex flex-col gap-1.5">
+                      <div className="flex flex-col gap-1.5 min-w-[300px]">
                         {horse.history_details.map((hd, i) => (
-                          <div key={i} className="flex justify-between items-center text-[11px] border-b border-gray-700/50 pb-1.5 last:border-0 last:pb-0 gap-1">
-                            <span className="text-gray-300 w-32 truncate" title={hd.race_name}>{hd.race_name}</span>
+                          <div key={i} className="flex justify-between items-center text-[10px] md:text-[11px] border-b border-gray-700/50 pb-1.5 last:border-0 last:pb-0 gap-1">
+                            <span className="text-gray-300 w-28 md:w-32 truncate" title={hd.race_name}>{hd.race_name}</span>
                             <span className={`font-bold w-6 text-right flex-shrink-0 ${hd.rank === '1着' ? 'text-yellow-400' : hd.rank === '2着' || hd.rank === '3着' ? 'text-green-400' : 'text-gray-400'}`}>{hd.rank}</span>
-                            <span className="text-orange-300/80 w-12 text-center text-[10px] tracking-tighter" title="道中の通過順">{hd.passing}</span>
+                            <span className="text-orange-300/80 w-12 text-center text-[9px] md:text-[10px] tracking-tighter" title="道中の通過順">{hd.passing}</span>
                             <span className="text-gray-400 w-10 text-right">{hd.time}</span>
                             <span className="text-blue-300 w-10 text-right">{hd.up}</span>
                           </div>
@@ -516,127 +464,149 @@ export default function Home() {
               ))}
             </div>
 
-            <button onClick={handleSimulate} disabled={loading} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-4 rounded-lg mt-8 shadow-[0_0_15px_rgba(220,38,38,0.5)] text-lg transition duration-200 disabled:opacity-50">
+            <button onClick={handleSimulate} disabled={loading} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 md:py-4 rounded-lg mt-6 md:mt-8 shadow-[0_0_15px_rgba(220,38,38,0.5)] text-sm md:text-lg transition duration-200 disabled:opacity-50">
               {loading ? 'レースを生成中...' : '🏁 展開とバイアスを加味したシミュレーション開始'}
             </button>
           </div>
         )}
 
         {isRacing && results && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 md:p-4">
             
-            <div className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-gray-900 rounded-2xl border border-gray-600 shadow-2xl p-6">
+            <div className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-gray-900 rounded-2xl border border-gray-600 shadow-2xl p-4 md:p-6">
               
               <button 
                 onClick={() => {
                   setIsRacing(false);
                   setShowResults(false);
                 }}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white bg-gray-800 hover:bg-red-600 rounded-full w-10 h-10 flex items-center justify-center transition z-50 text-xl font-bold"
+                className="absolute top-2 right-2 md:top-4 md:right-4 text-gray-400 hover:text-white bg-gray-800 hover:bg-red-600 rounded-full w-8 h-8 md:w-10 md:h-10 flex items-center justify-center transition z-50 text-lg md:text-xl font-bold"
                 title="閉じる"
               >
                 ✕
               </button>
 
-              <style>{animationStyles}</style>
+              <style>{`
+                @keyframes popIn {
+                  from { opacity: 0; transform: scale(0.95); }
+                  to { opacity: 1; transform: scale(1); }
+                }
+              `}</style>
 
-              <h3 className="text-center font-bold text-gray-300 mb-4 tracking-widest text-xl">
+              <h3 className="text-center font-bold text-gray-300 mb-3 md:mb-4 tracking-widest text-lg md:text-xl">
                 【 RACE TRACKING 】
               </h3>
 
-              {/* ▼▼ スマホリサイズ対応：自動で縮小して綺麗に収まるコンテナ ▼▼ */}
-              <div 
-                ref={trackContainerRef}
-                className="relative w-full max-w-[800px] mx-auto bg-[#1b4332] rounded-xl overflow-hidden shadow-inner flex-shrink-0 border-2 border-gray-700 flex justify-center"
-                style={{ height: `${300 * trackScale}px` }}
-              >
-                <div 
-                  className="relative origin-top" 
-                  style={{ 
-                    width: '800px', 
-                    height: '300px', 
-                    transform: `scale(${trackScale})` 
-                  }}
-                >
-                  <svg width="100%" height="100%" viewBox="0 0 800 300" className="absolute inset-0">
-                    <rect width="800" height="300" fill="#2d6a4f" />
-                    <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="#1b4332" stroke="#d4a373" strokeWidth="46" />
-                    <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="none" stroke="#ffffff" strokeWidth="2" strokeDasharray="4 8" opacity="0.8" />
-                    <line x1="500" y1="227" x2="500" y2="273" stroke="#ef4444" strokeWidth="6" opacity="0.9" />
-                    <text x="500" y="290" fill="white" fontSize="12" fontWeight="bold" textAnchor="middle" opacity="0.8">GOAL</text>
-                    <text x="400" y="35" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">向正面 (BACK STRETCH)</text>
-                    <text x="80" y="150" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">3コーナー</text>
-                    <text x="720" y="150" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">4コーナー</text>
-                  </svg>
+              {/* ▼▼ 超・スマホ対応！画面幅に合わせて1ミリもハミ出さずに伸縮する最強SVGコンテナ ▼▼ */}
+              <div className="relative w-full mx-auto bg-[#1b4332] rounded-xl overflow-hidden shadow-inner border-2 border-gray-700">
+                <svg viewBox="0 0 800 300" className="w-full h-auto block" preserveAspectRatio="xMidYMid meet">
+                  
+                  {/* 馬場背景 */}
+                  <rect width="800" height="300" fill="#2d6a4f" />
+                  
+                  {/* コースの線（軌道） */}
+                  <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="#1b4332" stroke="#d4a373" strokeWidth="46" />
+                  <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="none" stroke="#ffffff" strokeWidth="2" strokeDasharray="4 8" opacity="0.8" />
+                  
+                  {/* ゴール板などの装飾 */}
+                  <line x1="500" y1="227" x2="500" y2="273" stroke="#ef4444" strokeWidth="6" opacity="0.9" />
+                  <text x="500" y="290" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle" opacity="0.9">GOAL</text>
+                  <text x="400" y="35" fill="rgba(255,255,255,0.4)" fontSize="16" fontWeight="bold" textAnchor="middle">向正面 (BACK STRETCH)</text>
+                  <text x="90" y="150" fill="rgba(255,255,255,0.4)" fontSize="16" fontWeight="bold">3コーナー</text>
+                  <text x="710" y="150" fill="rgba(255,255,255,0.4)" fontSize="16" fontWeight="bold" textAnchor="end">4コーナー</text>
 
+                  {/* SVGネイティブで動く最強の馬たち */}
                   {results.map((result) => {
+                    const horse = horses.find(h => h.umaban === result.umaban);
+                    const kyakushitsu = horse ? horse.kyakushitsu : 2;
+
+                    let p1 = 0; let p2 = 0;
+                    if (kyakushitsu == 1) p1 = 0.37; 
+                    else if (kyakushitsu == 2) p1 = 0.345; 
+                    else if (kyakushitsu == 3) p1 = 0.335; 
+                    else p1 = 0.325; 
+                    p1 += (Math.random() * 0.012 - 0.006); 
+
+                    if (kyakushitsu == 1) p2 = 0.72; 
+                    else if (kyakushitsu == 2) p2 = 0.70;
+                    else if (kyakushitsu == 3) p2 = 0.69;
+                    else p2 = 0.68;
+                    p2 += (Math.random() * 0.012 - 0.006);
+
                     const duration = 12 + (result.rank * 0.12) + (Math.random() * 0.1); 
+                    const colors = getHorseSvgColors(result.umaban);
+                    const pathString = "M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z";
+
                     return (
-                      <div
-                        key={result.umaban}
-                        className={`absolute top-0 left-0 w-4 h-4 -ml-2 -mt-2 rounded-full flex items-center justify-center font-bold text-[9px] shadow-[0_2px_4px_rgba(0,0,0,0.5)] border border-gray-500 z-10 ${getHorseColor(result.umaban)}`}
-                        style={{
-                          offsetPath: 'path("M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z")',
-                          animation: `tracking-${result.umaban} ${duration}s linear forwards`
-                        }}
-                        title={result.bamei} 
-                      >
-                        {result.umaban}
-                      </div>
+                      <g key={result.umaban} className="drop-shadow-lg">
+                        <animateMotion
+                            dur={`${duration}s`}
+                            fill="freeze"
+                            keyTimes="0; 0.35; 0.7; 1"
+                            keyPoints={`0; ${p1}; ${p2}; 1`}
+                            calcMode="linear"
+                            path={pathString}
+                        />
+                        <circle cx="0" cy="0" r="14" fill={colors.bg} stroke={colors.border} strokeWidth="2" />
+                        <text x="0" y="5" fontSize="14" fontWeight="bold" textAnchor="middle" fill={colors.text}>
+                            {result.umaban}
+                        </text>
+                      </g>
                     );
                   })}
+                </svg>
 
-                  {showResults && (
-                    <div className="absolute inset-0 bg-black/85 z-40 flex flex-col items-center justify-center" style={{ animation: 'popIn 0.5s ease-out forwards' }}>
-                      <h3 className="text-3xl font-black text-yellow-400 mb-4 tracking-widest drop-shadow-[0_0_10px_rgba(234,179,8,0.8)]">
-                        レース確定
-                      </h3>
-                      
-                      <div className="w-[90%] max-w-lg bg-gray-900 border-2 border-yellow-600 rounded-xl p-4 shadow-[0_0_30px_rgba(234,179,8,0.3)]">
-                        <table className="w-full text-center border-collapse">
-                          <thead>
-                            <tr className="border-b border-gray-700 text-gray-400 text-xs">
-                              <th className="pb-2 w-16">着順</th>
-                              <th className="pb-2 w-12">馬番</th>
-                              <th className="pb-2 text-left pl-4">馬名</th>
-                              <th className="pb-2 text-right pr-4">AIスコア</th>
+                {/* ▼▼ スマホ画面でも絶対に潰れない「レース確定」オーバーレイ ▼▼ */}
+                {showResults && (
+                  <div className="absolute inset-0 bg-black/85 z-40 flex flex-col items-center justify-center p-2 md:p-4" style={{ animation: 'popIn 0.5s ease-out forwards' }}>
+                    <h3 className="text-2xl md:text-3xl font-black text-yellow-400 mb-3 md:mb-4 tracking-widest drop-shadow-[0_0_10px_rgba(234,179,8,0.8)]">
+                      レース確定
+                    </h3>
+                    
+                    <div className="w-full max-w-sm md:max-w-lg bg-gray-900 border-2 border-yellow-600 rounded-xl p-2 md:p-4 shadow-[0_0_30px_rgba(234,179,8,0.3)] overflow-x-auto">
+                      <table className="w-full text-center border-collapse min-w-[260px]">
+                        <thead>
+                          <tr className="border-b border-gray-700 text-gray-400 text-[10px] md:text-xs">
+                            <th className="pb-1.5 md:pb-2 w-12 md:w-16">着順</th>
+                            <th className="pb-1.5 md:pb-2 w-10 md:w-12">馬番</th>
+                            <th className="pb-1.5 md:pb-2 text-left pl-2 md:pl-4">馬名</th>
+                            <th className="pb-1.5 md:pb-2 text-right pr-2 md:pr-4">AIスコア</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {results.slice(0, 5).map((r) => (
+                            <tr key={r.umaban} className="border-b border-gray-800/80 last:border-0">
+                              <td className={`py-1.5 md:py-2 text-sm md:text-lg font-bold ${r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-gray-300' : r.rank === 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+                                {r.rank}
+                              </td>
+                              <td className="py-1.5 md:py-2">
+                                <div className={`w-4 h-4 md:w-5 md:h-5 mx-auto rounded-full flex items-center justify-center font-bold text-[9px] md:text-[10px] border ${getHorseColor(r.umaban)}`}>
+                                  {r.umaban}
+                                </div>
+                              </td>
+                              <td className="py-1.5 md:py-2 text-left pl-2 md:pl-4 font-bold text-sm md:text-base text-gray-100 truncate max-w-[100px] md:max-w-none">{r.bamei}</td>
+                              <td className="py-1.5 md:py-2 text-right pr-2 md:pr-4 text-gray-400 font-mono text-xs md:text-sm">{r.shisu.toFixed(1)}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {results.slice(0, 5).map((r) => (
-                              <tr key={r.umaban} className="border-b border-gray-800/80 last:border-0">
-                                <td className={`py-2 text-lg font-bold ${r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-gray-300' : r.rank === 3 ? 'text-orange-400' : 'text-gray-500'}`}>
-                                  {r.rank}
-                                </td>
-                                <td className="py-2">
-                                  <div className={`w-5 h-5 mx-auto rounded-full flex items-center justify-center font-bold text-[10px] border ${getHorseColor(r.umaban)}`}>
-                                    {r.umaban}
-                                  </div>
-                                </td>
-                                <td className="py-2 text-left pl-4 font-bold text-base text-gray-100">{r.bamei}</td>
-                                <td className="py-2 text-right pr-4 text-gray-400 font-mono text-sm">{r.shisu.toFixed(1)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-              {/* ▲▲ 自動縮小コンテナここまで ▲▲ */}
+              {/* ▲▲ SVGコンテナここまで ▲▲ */}
 
-              <div className={`mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 transition-opacity duration-1000 ${showResults ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>
+              <div className={`mt-4 md:mt-6 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity duration-1000 ${showResults ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>
                 {results.map((result, index) => (
-                  <div key={index} className={`flex flex-col p-3 rounded-xl border ${result.rank === 1 ? 'bg-yellow-900/40 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : result.rank <= 3 ? 'bg-gray-800 border-gray-500' : 'bg-gray-900 border-gray-800'}`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-lg font-extrabold ${result.rank === 1 ? 'text-yellow-400' : result.rank === 2 ? 'text-gray-300' : result.rank === 3 ? 'text-orange-400' : 'text-gray-600'}`}>
+                  <div key={index} className={`flex flex-col p-2 md:p-3 rounded-xl border ${result.rank === 1 ? 'bg-yellow-900/40 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : result.rank <= 3 ? 'bg-gray-800 border-gray-500' : 'bg-gray-900 border-gray-800'}`}>
+                    <div className="flex items-center gap-1.5 md:gap-2">
+                      <span className={`text-sm md:text-lg font-extrabold ${result.rank === 1 ? 'text-yellow-400' : result.rank === 2 ? 'text-gray-300' : result.rank === 3 ? 'text-orange-400' : 'text-gray-600'}`}>
                         {result.rank}着
                       </span>
-                      <div className={`w-6 h-6 flex items-center justify-center font-bold text-[10px] rounded-full border ${getHorseColor(result.umaban)}`}>
+                      <div className={`w-5 h-5 md:w-6 md:h-6 flex items-center justify-center font-bold text-[9px] md:text-[10px] rounded-full border flex-shrink-0 ${getHorseColor(result.umaban)}`}>
                         {result.umaban}
                       </div>
-                      <span className="text-sm font-bold text-gray-200 truncate flex-grow">
+                      <span className="text-xs md:text-sm font-bold text-gray-200 truncate flex-grow">
                         {result.bamei}
                       </span>
                     </div>
