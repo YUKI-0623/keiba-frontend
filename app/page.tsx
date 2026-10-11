@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface HorseData {
   wakuban: number;
@@ -71,6 +71,30 @@ export default function Home() {
   const [showResults, setShowResults] = useState(false); 
   const [animationStyles, setAnimationStyles] = useState(''); 
 
+  // ▼▼ ここから追加：スマホ画面リサイズ対応のための設定 ▼▼
+  const trackContainerRef = useRef<HTMLDivElement>(null);
+  const [trackScale, setTrackScale] = useState(1);
+
+  useEffect(() => {
+    if (!isRacing) return;
+    const updateScale = () => {
+      if (trackContainerRef.current) {
+        // コンテナの幅を取得し、800px未満なら自動的に縮小率を計算する
+        const availableWidth = trackContainerRef.current.clientWidth;
+        setTrackScale(availableWidth < 800 ? availableWidth / 800 : 1);
+      }
+    };
+    updateScale();
+    // 画面表示直後のズレを防ぐため、少し待ってから再計算
+    const timer = setTimeout(updateScale, 100);
+    window.addEventListener('resize', updateScale);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateScale);
+    };
+  }, [isRacing]);
+  // ▲▲ 追加ここまで ▲▲
+
   const handleFetchRace = async () => {
     if (!raceId) {
       alert("レースIDを入力してください");
@@ -79,7 +103,6 @@ export default function Home() {
     
     setFetching(true);
     try {
-      // ▼ APIのURLをRenderのものに変更
       const response = await fetch(`https://keiba-api-hybt.onrender.com/fetch_race/${raceId}`);
       if (!response.ok) throw new Error('通信エラー');
       
@@ -135,7 +158,6 @@ export default function Home() {
     setShowResults(false);
 
     try {
-      // ▼ APIのURLをRenderのものに変更
       const response = await fetch('https://keiba-api-hybt.onrender.com/diagnose_race', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,7 +232,6 @@ export default function Home() {
     setShowResults(false);
 
     try {
-      // ▼ APIのURLをRenderのものに変更
       const response = await fetch('https://keiba-api-hybt.onrender.com/simulate_race', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -523,72 +544,87 @@ export default function Home() {
                 【 RACE TRACKING 】
               </h3>
 
-              <div className="relative w-full max-w-[800px] h-[300px] mx-auto bg-[#1b4332] rounded-xl overflow-hidden shadow-inner flex-shrink-0 border-2 border-gray-700">
-                <svg width="100%" height="100%" viewBox="0 0 800 300" className="absolute inset-0">
-                  <rect width="800" height="300" fill="#2d6a4f" />
-                  <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="#1b4332" stroke="#d4a373" strokeWidth="46" />
-                  <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="none" stroke="#ffffff" strokeWidth="2" strokeDasharray="4 8" opacity="0.8" />
-                  <line x1="500" y1="227" x2="500" y2="273" stroke="#ef4444" strokeWidth="6" opacity="0.9" />
-                  <text x="500" y="290" fill="white" fontSize="12" fontWeight="bold" textAnchor="middle" opacity="0.8">GOAL</text>
-                  <text x="400" y="35" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">向正面 (BACK STRETCH)</text>
-                  <text x="80" y="150" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">3コーナー</text>
-                  <text x="720" y="150" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">4コーナー</text>
-                </svg>
+              {/* ▼▼ スマホリサイズ対応：自動で縮小して綺麗に収まるコンテナ ▼▼ */}
+              <div 
+                ref={trackContainerRef}
+                className="relative w-full max-w-[800px] mx-auto bg-[#1b4332] rounded-xl overflow-hidden shadow-inner flex-shrink-0 border-2 border-gray-700 flex justify-center"
+                style={{ height: `${300 * trackScale}px` }}
+              >
+                <div 
+                  className="relative origin-top" 
+                  style={{ 
+                    width: '800px', 
+                    height: '300px', 
+                    transform: `scale(${trackScale})` 
+                  }}
+                >
+                  <svg width="100%" height="100%" viewBox="0 0 800 300" className="absolute inset-0">
+                    <rect width="800" height="300" fill="#2d6a4f" />
+                    <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="#1b4332" stroke="#d4a373" strokeWidth="46" />
+                    <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="none" stroke="#ffffff" strokeWidth="2" strokeDasharray="4 8" opacity="0.8" />
+                    <line x1="500" y1="227" x2="500" y2="273" stroke="#ef4444" strokeWidth="6" opacity="0.9" />
+                    <text x="500" y="290" fill="white" fontSize="12" fontWeight="bold" textAnchor="middle" opacity="0.8">GOAL</text>
+                    <text x="400" y="35" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">向正面 (BACK STRETCH)</text>
+                    <text x="80" y="150" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">3コーナー</text>
+                    <text x="720" y="150" fill="rgba(255,255,255,0.3)" fontSize="14" fontWeight="bold">4コーナー</text>
+                  </svg>
 
-                {results.map((result) => {
-                  const duration = 12 + (result.rank * 0.12) + (Math.random() * 0.1); 
-                  return (
-                    <div
-                      key={result.umaban}
-                      className={`absolute top-0 left-0 w-4 h-4 -ml-2 -mt-2 rounded-full flex items-center justify-center font-bold text-[9px] shadow-[0_2px_4px_rgba(0,0,0,0.5)] border border-gray-500 z-10 ${getHorseColor(result.umaban)}`}
-                      style={{
-                        offsetPath: 'path("M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z")',
-                        animation: `tracking-${result.umaban} ${duration}s linear forwards`
-                      }}
-                      title={result.bamei} 
-                    >
-                      {result.umaban}
-                    </div>
-                  );
-                })}
+                  {results.map((result) => {
+                    const duration = 12 + (result.rank * 0.12) + (Math.random() * 0.1); 
+                    return (
+                      <div
+                        key={result.umaban}
+                        className={`absolute top-0 left-0 w-4 h-4 -ml-2 -mt-2 rounded-full flex items-center justify-center font-bold text-[9px] shadow-[0_2px_4px_rgba(0,0,0,0.5)] border border-gray-500 z-10 ${getHorseColor(result.umaban)}`}
+                        style={{
+                          offsetPath: 'path("M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z")',
+                          animation: `tracking-${result.umaban} ${duration}s linear forwards`
+                        }}
+                        title={result.bamei} 
+                      >
+                        {result.umaban}
+                      </div>
+                    );
+                  })}
 
-                {showResults && (
-                  <div className="absolute inset-0 bg-black/85 z-40 flex flex-col items-center justify-center" style={{ animation: 'popIn 0.5s ease-out forwards' }}>
-                    <h3 className="text-3xl font-black text-yellow-400 mb-4 tracking-widest drop-shadow-[0_0_10px_rgba(234,179,8,0.8)]">
-                      レース確定
-                    </h3>
-                    
-                    <div className="w-[90%] max-w-lg bg-gray-900 border-2 border-yellow-600 rounded-xl p-4 shadow-[0_0_30px_rgba(234,179,8,0.3)]">
-                      <table className="w-full text-center border-collapse">
-                        <thead>
-                          <tr className="border-b border-gray-700 text-gray-400 text-xs">
-                            <th className="pb-2 w-16">着順</th>
-                            <th className="pb-2 w-12">馬番</th>
-                            <th className="pb-2 text-left pl-4">馬名</th>
-                            <th className="pb-2 text-right pr-4">AIスコア</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {results.slice(0, 5).map((r) => (
-                            <tr key={r.umaban} className="border-b border-gray-800/80 last:border-0">
-                              <td className={`py-2 text-lg font-bold ${r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-gray-300' : r.rank === 3 ? 'text-orange-400' : 'text-gray-500'}`}>
-                                {r.rank}
-                              </td>
-                              <td className="py-2">
-                                <div className={`w-5 h-5 mx-auto rounded-full flex items-center justify-center font-bold text-[10px] border ${getHorseColor(r.umaban)}`}>
-                                  {r.umaban}
-                                </div>
-                              </td>
-                              <td className="py-2 text-left pl-4 font-bold text-base text-gray-100">{r.bamei}</td>
-                              <td className="py-2 text-right pr-4 text-gray-400 font-mono text-sm">{r.shisu.toFixed(1)}</td>
+                  {showResults && (
+                    <div className="absolute inset-0 bg-black/85 z-40 flex flex-col items-center justify-center" style={{ animation: 'popIn 0.5s ease-out forwards' }}>
+                      <h3 className="text-3xl font-black text-yellow-400 mb-4 tracking-widest drop-shadow-[0_0_10px_rgba(234,179,8,0.8)]">
+                        レース確定
+                      </h3>
+                      
+                      <div className="w-[90%] max-w-lg bg-gray-900 border-2 border-yellow-600 rounded-xl p-4 shadow-[0_0_30px_rgba(234,179,8,0.3)]">
+                        <table className="w-full text-center border-collapse">
+                          <thead>
+                            <tr className="border-b border-gray-700 text-gray-400 text-xs">
+                              <th className="pb-2 w-16">着順</th>
+                              <th className="pb-2 w-12">馬番</th>
+                              <th className="pb-2 text-left pl-4">馬名</th>
+                              <th className="pb-2 text-right pr-4">AIスコア</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {results.slice(0, 5).map((r) => (
+                              <tr key={r.umaban} className="border-b border-gray-800/80 last:border-0">
+                                <td className={`py-2 text-lg font-bold ${r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-gray-300' : r.rank === 3 ? 'text-orange-400' : 'text-gray-500'}`}>
+                                  {r.rank}
+                                </td>
+                                <td className="py-2">
+                                  <div className={`w-5 h-5 mx-auto rounded-full flex items-center justify-center font-bold text-[10px] border ${getHorseColor(r.umaban)}`}>
+                                    {r.umaban}
+                                  </div>
+                                </td>
+                                <td className="py-2 text-left pl-4 font-bold text-base text-gray-100">{r.bamei}</td>
+                                <td className="py-2 text-right pr-4 text-gray-400 font-mono text-sm">{r.shisu.toFixed(1)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
+              {/* ▲▲ 自動縮小コンテナここまで ▲▲ */}
 
               <div className={`mt-6 grid grid-cols-2 md:grid-cols-4 gap-4 transition-opacity duration-1000 ${showResults ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>
                 {results.map((result, index) => (
