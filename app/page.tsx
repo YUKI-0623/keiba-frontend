@@ -14,6 +14,8 @@ interface HorseData {
   avg_agari: number;
   kyakushitsu: number;
   shussou_kaisuu: number;
+  pci?: number;
+  pci_type?: string;
 }
 
 interface HistoryDetail {
@@ -21,7 +23,8 @@ interface HistoryDetail {
   rank: string;
   time: string;
   up: string;
-  passing: string; 
+  passing: string;
+  pci?: string;
 }
 
 interface DiagnosisResult {
@@ -31,6 +34,8 @@ interface DiagnosisResult {
   shisu: number;
   myoumi: number; 
   time_diff: number;
+  pci: number;
+  pci_type: string;
   history_details: HistoryDetail[];
 }
 
@@ -48,6 +53,8 @@ export default function Home() {
 
   const [targetRaceName, setTargetRaceName] = useState('');
   const [targetPlace, setTargetPlace] = useState('');
+  const [courseRpci, setCourseRpci] = useState<number | null>(null);
+  const [courseRpciType, setCourseRpciType] = useState<string>('');
 
   const [courseType, setCourseType] = useState('芝');
   const [distance, setDistance] = useState(2000);
@@ -57,14 +64,14 @@ export default function Home() {
   const [trackBias, setTrackBias] = useState('フラット'); 
 
   const [horses, setHorses] = useState<HorseData[]>([
-    { wakuban: 1, umaban: 1, bamei: '馬名を入力', kishu: '騎手', odds: 0.0, kinryou: 55, bataijuu: 480, zenso_chakujun: 9, avg_agari: 35.0, kyakushitsu: 2, shussou_kaisuu: 0 },
+    { wakuban: 1, umaban: 1, bamei: '馬名を入力', kishu: '騎手', odds: 0.0, kinryou: 55, bataijuu: 480, zenso_chakujun: 9, avg_agari: 35.0, kyakushitsu: 2, shussou_kaisuu: 0, pci: 50.0, pci_type: 'B' },
   ]);
 
   const [diagnosisResults, setDiagnosisResults] = useState<DiagnosisResult[] | null>(null);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
 
   const [results, setResults] = useState<RaceResult[] | null>(null);
-  const [raceInfo, setRaceInfo] = useState<{req_up: number, pace_f: number, pace_l: number} | null>(null);
+  const [raceInfo, setRaceInfo] = useState<{req_up: number, pace_f: number, pace_l: number, rpci?: number, rpci_type?: string} | null>(null);
   
   const [loading, setLoading] = useState(false);
   const [isRacing, setIsRacing] = useState(false);
@@ -88,13 +95,17 @@ export default function Home() {
         setDistance(data.distance);
         setWeather(data.weather || '晴');
         setTrackCondition(data.track_condition);
-        setExpectedPace('M'); 
+        
+        // RPCIから算出した推奨ペースを自動セット
+        setExpectedPace(data.recommended_pace || 'M'); 
+        setCourseRpci(data.rpci || 50.0);
+        setCourseRpciType(data.rpci_type || 'B');
         setTrackBias('フラット'); 
         
         setTargetRaceName(data.race_name);
         setTargetPlace(data.place_name);
 
-        alert(`${data.horses.length}頭のデータを取得しました。`);
+        alert(`${data.horses.length}頭のデータを取得しました。\n舞台RPCI: ${data.rpci || 50.0} (タイプ${data.rpci_type || 'B'}) に基づき予想ペースを自動設定しました。`);
         setDiagnosisResults(null); 
         setResults(null); 
         setRaceInfo(null);
@@ -113,7 +124,7 @@ export default function Home() {
 
   const handleChange = (index: number, field: keyof HorseData, value: string) => {
     const newHorses = [...horses];
-    if (field === 'bamei' || field === 'kishu') {
+    if (field === 'bamei' || field === 'kishu' || field === 'pci_type') {
       newHorses[index][field] = value as never;
     } else {
       newHorses[index][field] = (parseFloat(value) || 0) as never;
@@ -123,7 +134,7 @@ export default function Home() {
 
   const addHorse = () => {
     const newUmaban = horses.length + 1;
-    setHorses([...horses, { wakuban: 1, umaban: newUmaban, bamei: '', kishu: '', odds: 0.0, kinryou: 55, bataijuu: 480, zenso_chakujun: 9, avg_agari: 35.0, kyakushitsu: 2, shussou_kaisuu: 0 }]);
+    setHorses([...horses, { wakuban: 1, umaban: newUmaban, bamei: '', kishu: '', odds: 0.0, kinryou: 55, bataijuu: 480, zenso_chakujun: 9, avg_agari: 35.0, kyakushitsu: 2, shussou_kaisuu: 0, pci: 50.0, pci_type: 'B' }]);
   };
 
   const handleDiagnose = async () => {
@@ -152,7 +163,13 @@ export default function Home() {
 
       const data = await response.json();
       setDiagnosisResults(data.diagnosis);
-      setRaceInfo({ req_up: data.req_up, pace_f: data.pace_f, pace_l: data.pace_l });
+      setRaceInfo({ 
+        req_up: data.req_up, 
+        pace_f: data.pace_f, 
+        pace_l: data.pace_l,
+        rpci: data.rpci,
+        rpci_type: data.rpci_type
+      });
       
     } catch (error) {
       console.error(error);
@@ -201,7 +218,6 @@ export default function Home() {
     }
   };
 
-  // 通常のHTML用カラー
   const getHorseColor = (umaban: number) => {
     const colors = [
       'bg-white text-gray-900 border-gray-300',
@@ -216,7 +232,6 @@ export default function Home() {
     return colors[(umaban - 1) % 8] || 'bg-gray-500 text-white';
   };
 
-  // ▼ 新規：SVGアニメーション専用のカラーコード
   const getHorseSvgColors = (umaban: number) => {
     const colors = [
       { bg: '#ffffff', text: '#111827', border: '#d1d5db' }, 
@@ -231,12 +246,24 @@ export default function Home() {
     return colors[(umaban - 1) % 8] || { bg: '#6b7280', text: '#ffffff', border: '#374151' };
   };
 
+  const getPciBadgeStyle = (pciType?: string) => {
+    if (pciType === 'A') return 'bg-red-900/70 text-red-200 border-red-600';
+    if (pciType === 'C') return 'bg-blue-900/70 text-blue-200 border-blue-600';
+    return 'bg-green-900/70 text-green-200 border-green-600';
+  };
+
+  const getPciLabelText = (pciType?: string) => {
+    if (pciType === 'A') return 'A:消耗戦';
+    if (pciType === 'C') return 'C:瞬発力';
+    return 'B:万能';
+  };
+
   return (
     <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl md:text-3xl font-bold mb-2 text-center text-red-500">PRO仕様 競馬本格シミュレーター</h1>
         <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
-          [ 展開 × トラックバイアス × 騎手適性 × オッズ期待値 ]
+          [ 展開(RPCI) × 好走PCI適性 × トラックバイアス × オッズ期待値 ]
         </p>
 
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
@@ -270,10 +297,15 @@ export default function Home() {
                 <span className="text-yellow-500 font-bold text-xs mb-1 tracking-wider">TARGET RACE</span>
                 <h3 className="text-xl md:text-2xl font-extrabold text-white leading-tight">{targetRaceName}</h3>
               </div>
-              <div className="text-left md:text-right w-full md:w-auto">
-                <span className="inline-block bg-green-800 text-green-100 font-bold px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-sm border border-green-600 shadow-sm">
+              <div className="flex flex-wrap gap-2 justify-start md:justify-end w-full md:w-auto">
+                <span className="inline-block bg-green-800 text-green-100 font-bold px-3 py-1.5 rounded-full text-xs border border-green-600 shadow-sm whitespace-nowrap">
                   📍 {targetPlace}競馬場 / {courseType}{distance}m
                 </span>
+                {courseRpci !== null && (
+                  <span className={`inline-block font-bold px-3 py-1.5 rounded-full text-xs border shadow-sm whitespace-nowrap ${getPciBadgeStyle(courseRpciType)}`}>
+                    ⏱️ 舞台RPCI: {courseRpci} (傾向{courseRpciType})
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -305,11 +337,13 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-6 bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700">
             <div>
-              <label className="text-xs md:text-sm text-orange-400 font-bold block mb-1">予想ペース (展開)</label>
+              <label className="text-xs md:text-sm text-orange-400 font-bold block mb-1">
+                予想ペース (展開) {courseRpci !== null && <span className="text-[11px] text-yellow-300 ml-1">※舞台RPCIから自動判定済</span>}
+              </label>
               <select value={expectedPace} onChange={e => setExpectedPace(e.target.value)} className="w-full bg-orange-900 text-white font-bold rounded p-2 border border-orange-600 focus:outline-none focus:ring-1 focus:ring-orange-500 shadow-[0_0_10px_rgba(234,88,12,0.3)] text-sm md:text-base">
-                <option value="H">ハイペース (前がキツくなる)</option>
-                <option value="M">ミドルペース (標準)</option>
-                <option value="S">スローペース (前が楽になる)</option>
+                <option value="H">A: ハイペース (RPCI 48未満 / 消耗戦)</option>
+                <option value="M">B: ミドルペース (RPCI 48〜52 / 標準)</option>
+                <option value="S">C: スローペース (RPCI 52超 / 瞬発力戦)</option>
               </select>
             </div>
             <div>
@@ -326,27 +360,27 @@ export default function Home() {
           
           <div className="grid md:grid-cols-2 gap-3 md:gap-4">
             {horses.map((horse, index) => (
-              <div key={index} className="bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700 flex gap-2 md:gap-4 items-start">
-                <div className={`mt-0.5 md:mt-1 w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-bold text-sm md:text-base rounded-full shadow-md flex-shrink-0 ${getHorseColor(horse.umaban)}`}>
+              <div key={index} className="bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700 flex gap-2 md:gap-3 items-center">
+                <div className={`w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-bold text-sm md:text-base rounded-full shadow-md flex-shrink-0 ${getHorseColor(horse.umaban)}`}>
                   {horse.umaban}
                 </div>
-                <div className="flex-grow flex flex-col gap-2 w-full">
-                  <div className="flex flex-wrap md:flex-nowrap gap-1.5 md:gap-2">
+                <div className="flex-grow flex flex-col gap-1.5 w-full">
+                  <div className="flex flex-wrap md:flex-nowrap gap-1.5 items-center">
                     <input 
                       type="text" 
                       value={horse.bamei} 
                       onChange={(e) => handleChange(index, 'bamei', e.target.value)} 
                       placeholder="馬名"
-                      className="w-[45%] md:w-1/3 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" 
+                      className="w-[42%] md:w-1/3 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" 
                     />
                     <input 
                       type="text" 
                       value={horse.kishu} 
                       onChange={(e) => handleChange(index, 'kishu', e.target.value)} 
                       placeholder="騎手"
-                      className="w-[45%] md:w-1/4 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 border border-blue-800/50" 
+                      className="w-[28%] md:w-1/5 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 border border-blue-800/50" 
                     />
-                    <div className="w-[45%] md:w-1/5 relative">
+                    <div className="w-[25%] md:w-1/5 relative">
                       <input 
                         type="number" 
                         step="0.1"
@@ -360,13 +394,16 @@ export default function Home() {
                     <select 
                       value={horse.kyakushitsu} 
                       onChange={(e) => handleChange(index, 'kyakushitsu', e.target.value)} 
-                      className="w-[45%] md:w-1/5 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1 focus:outline-none border border-purple-700"
+                      className="w-[45%] md:w-1/6 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1.5 focus:outline-none border border-purple-700"
                     >
                       <option value="1">逃げ</option>
                       <option value="2">先行</option>
                       <option value="3">差し</option>
                       <option value="4">追込</option>
                     </select>
+                    <span className={`px-2 py-1 rounded text-[10px] font-bold border whitespace-nowrap ${getPciBadgeStyle(horse.pci_type)}`}>
+                      PCI:{horse.pci ?? 50.0} ({horse.pci_type ?? 'B'})
+                    </span>
                   </div>
                 </div>
               </div>
@@ -382,18 +419,21 @@ export default function Home() {
           </button>
 
           <button onClick={handleDiagnose} disabled={isDiagnosing || horses.length < 2} className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 md:py-4 rounded-lg mt-6 shadow-lg text-sm md:text-lg transition duration-200 disabled:opacity-50">
-            {isDiagnosing ? '過去のデータを分析中...' : '📊 指定展開・バイアス・オッズ期待値で全頭診断を実行！'}
+            {isDiagnosing ? '過去のデータを分析中...' : '📊 展開(RPCI)・好走PCI・バイアス・オッズで全頭診断を実行！'}
           </button>
         </div>
 
         {diagnosisResults && raceInfo && (
           <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
-            <h2 className="text-xl md:text-2xl font-bold mb-4 text-indigo-400">STEP 3: 📊 AI全頭診断 ＆ 期待値レポート</h2>
+            <h2 className="text-xl md:text-2xl font-bold mb-4 text-indigo-400">STEP 3: 📊 AI全頭診断 ＆ PCI適性・期待値レポート</h2>
             
-            <div className="flex flex-col md:flex-row justify-center gap-2 md:gap-6 text-xs md:text-sm font-bold text-red-400 mb-6 bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700">
-              <p>【{expectedPace === 'H' ? 'ハイ' : expectedPace === 'S' ? 'スロー' : 'ミドル'}想定】 前半 {raceInfo.pace_f}秒 / 後半 {raceInfo.pace_l}秒</p>
+            <div className="flex flex-col md:flex-row justify-center items-center gap-2 md:gap-6 text-xs md:text-sm font-bold text-red-400 mb-6 bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700">
+              <p>【{expectedPace === 'H' ? 'A:ハイ' : expectedPace === 'S' ? 'C:スロー' : 'B:ミドル'}想定】 前半 {raceInfo.pace_f}秒 / 後半 {raceInfo.pace_l}秒</p>
+              {raceInfo.rpci && (
+                <p>舞台RPCI: <span className="text-yellow-300 bg-yellow-900/30 px-2 py-0.5 rounded border border-yellow-700/50">{raceInfo.rpci} (傾向{raceInfo.rpci_type})</span></p>
+              )}
               <p>馬場傾向: <span className="text-pink-400 bg-pink-900/30 px-2 py-0.5 rounded border border-pink-700/50">{trackBias}</span></p>
-              <p>要求タイム: <span className="text-lg md:text-xl text-yellow-400">{raceInfo.req_up}秒</span></p>
+              <p>要求上り: <span className="text-lg md:text-xl text-yellow-400">{raceInfo.req_up}秒</span></p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -411,12 +451,27 @@ export default function Home() {
                   ) : null}
                   
                   <div className="flex justify-between items-center mb-1">
-                    <div className="flex items-center gap-2 md:gap-3">
-                      <div className={`w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-bold text-sm md:text-base rounded-full shadow-md ${getHorseColor(horse.umaban)}`}>
-                        {horse.umaban}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-bold text-sm md:text-base rounded-full shadow-md ${getHorseColor(horse.umaban)}`}>
+                          {horse.umaban}
+                        </div>
+                        <span className="text-base md:text-lg font-bold">{horse.bamei}</span>
                       </div>
-                      <span className="text-base md:text-lg font-bold">{horse.bamei}</span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getPciBadgeStyle(horse.pci_type)}`}>
+                          好走PCI: {horse.pci} ({getPciLabelText(horse.pci_type)})
+                        </span>
+                        {((expectedPace === 'H' && horse.pci_type === 'A') ||
+                          (expectedPace === 'M' && horse.pci_type === 'B') ||
+                          (expectedPace === 'S' && horse.pci_type === 'C')) && (
+                          <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                            🔥 ペース合致
+                          </span>
+                        )}
+                      </div>
                     </div>
+
                     <div className="flex gap-3 md:gap-4 text-right">
                       {horse.odds > 0 && (
                         <div className="flex flex-col items-end border-r border-gray-700 pr-3 md:pr-4">
@@ -436,8 +491,8 @@ export default function Home() {
                   </div>
 
                   <div className="bg-gray-800 p-2 md:p-3 rounded border border-gray-700 overflow-x-auto">
-                    <div className="flex justify-between mb-2 min-w-[300px]">
-                       <span className="text-gray-400 text-[9px] md:text-[10px] font-bold">直近5走の戦歴 (場所・距離・馬場) / 通過 / タイム / 上り</span>
+                    <div className="flex justify-between mb-2 min-w-[320px]">
+                       <span className="text-gray-400 text-[9px] md:text-[10px] font-bold">直近5走 (場所・距離) / 着順 / 通過 / タイム / 上り / PCI</span>
                        {horse.odds > 0 && (
                          <span className="text-yellow-400 text-[10px] md:text-[11px] font-bold border border-yellow-600/50 px-1.5 md:px-2 rounded">
                            想定単勝: {horse.odds}倍
@@ -445,14 +500,15 @@ export default function Home() {
                        )}
                     </div>
                     {horse.history_details && horse.history_details.length > 0 ? (
-                      <div className="flex flex-col gap-1.5 min-w-[300px]">
+                      <div className="flex flex-col gap-1.5 min-w-[320px]">
                         {horse.history_details.map((hd, i) => (
                           <div key={i} className="flex justify-between items-center text-[10px] md:text-[11px] border-b border-gray-700/50 pb-1.5 last:border-0 last:pb-0 gap-1">
-                            <span className="text-gray-300 w-28 md:w-32 truncate" title={hd.race_name}>{hd.race_name}</span>
+                            <span className="text-gray-300 w-28 truncate" title={hd.race_name}>{hd.race_name}</span>
                             <span className={`font-bold w-6 text-right flex-shrink-0 ${hd.rank === '1着' ? 'text-yellow-400' : hd.rank === '2着' || hd.rank === '3着' ? 'text-green-400' : 'text-gray-400'}`}>{hd.rank}</span>
-                            <span className="text-orange-300/80 w-12 text-center text-[9px] md:text-[10px] tracking-tighter" title="道中の通過順">{hd.passing}</span>
+                            <span className="text-orange-300/80 w-11 text-center text-[9px] tracking-tighter" title="道中の通過順">{hd.passing}</span>
                             <span className="text-gray-400 w-10 text-right">{hd.time}</span>
                             <span className="text-blue-300 w-10 text-right">{hd.up}</span>
+                            <span className="text-emerald-300 w-9 text-right font-mono text-[10px]" title="レースPCI">{hd.pci || '-'}</span>
                           </div>
                         ))}
                       </div>
@@ -465,7 +521,7 @@ export default function Home() {
             </div>
 
             <button onClick={handleSimulate} disabled={loading} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 md:py-4 rounded-lg mt-6 md:mt-8 shadow-[0_0_15px_rgba(220,38,38,0.5)] text-sm md:text-lg transition duration-200 disabled:opacity-50">
-              {loading ? 'レースを生成中...' : '🏁 展開とバイアスを加味したシミュレーション開始'}
+              {loading ? 'レースを生成中...' : '🏁 展開・PCI適性・バイアスを加味したシミュレーション開始'}
             </button>
           </div>
         )}
@@ -497,25 +553,20 @@ export default function Home() {
                 【 RACE TRACKING 】
               </h3>
 
-              {/* ▼▼ 超・スマホ対応！画面幅に合わせて1ミリもハミ出さずに伸縮する最強SVGコンテナ ▼▼ */}
               <div className="relative w-full mx-auto bg-[#1b4332] rounded-xl overflow-hidden shadow-inner border-2 border-gray-700">
                 <svg viewBox="0 0 800 300" className="w-full h-auto block" preserveAspectRatio="xMidYMid meet">
                   
-                  {/* 馬場背景 */}
                   <rect width="800" height="300" fill="#2d6a4f" />
                   
-                  {/* コースの線（軌道） */}
                   <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="#1b4332" stroke="#d4a373" strokeWidth="46" />
                   <path d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z" fill="none" stroke="#ffffff" strokeWidth="2" strokeDasharray="4 8" opacity="0.8" />
                   
-                  {/* ゴール板などの装飾 */}
                   <line x1="500" y1="227" x2="500" y2="273" stroke="#ef4444" strokeWidth="6" opacity="0.9" />
                   <text x="500" y="290" fill="white" fontSize="14" fontWeight="bold" textAnchor="middle" opacity="0.9">GOAL</text>
                   <text x="400" y="35" fill="rgba(255,255,255,0.4)" fontSize="16" fontWeight="bold" textAnchor="middle">向正面 (BACK STRETCH)</text>
                   <text x="90" y="150" fill="rgba(255,255,255,0.4)" fontSize="16" fontWeight="bold">3コーナー</text>
                   <text x="710" y="150" fill="rgba(255,255,255,0.4)" fontSize="16" fontWeight="bold" textAnchor="end">4コーナー</text>
 
-                  {/* SVGネイティブで動く最強の馬たち */}
                   {results.map((result) => {
                     const horse = horses.find(h => h.umaban === result.umaban);
                     const kyakushitsu = horse ? horse.kyakushitsu : 2;
@@ -556,7 +607,6 @@ export default function Home() {
                   })}
                 </svg>
 
-                {/* ▼▼ スマホ画面でも絶対に潰れない「レース確定」オーバーレイ ▼▼ */}
                 {showResults && (
                   <div className="absolute inset-0 bg-black/85 z-40 flex flex-col items-center justify-center p-2 md:p-4" style={{ animation: 'popIn 0.5s ease-out forwards' }}>
                     <h3 className="text-2xl md:text-3xl font-black text-yellow-400 mb-3 md:mb-4 tracking-widest drop-shadow-[0_0_10px_rgba(234,179,8,0.8)]">
@@ -594,7 +644,6 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              {/* ▲▲ SVGコンテナここまで ▲▲ */}
 
               <div className={`mt-4 md:mt-6 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity duration-1000 ${showResults ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>
                 {results.map((result, index) => (
