@@ -11,7 +11,7 @@ interface HorseData {
   kinryou: number;
   bataijuu: number;
   weight_change: number; 
-  condition_override: string;
+  condition_override: string; // ★ 当日状態の手動オーバーライド
   zenso_chakujun: number;
   avg_agari: number;
   kyakushitsu: number;
@@ -74,6 +74,7 @@ export default function Home() {
   const [trackCondition, setTrackCondition] = useState('良');
   const [expectedPace, setExpectedPace] = useState('M_JIRIKI');
   
+  // ★ トラックバイアス（傾向）と強度の2軸
   const [trackBias, setTrackBias] = useState('フラット'); 
   const [biasStrength, setBiasStrength] = useState('中'); 
   
@@ -111,6 +112,7 @@ export default function Home() {
       if (!response.ok) throw new Error('通信エラー');
       const data = await response.json();
       if (data.status === 'success') {
+        // fetch後にcondition_overrideの初期値を入れる
         const mappedHorses = data.horses.map((h: any) => ({...h, condition_override: '1.00'}));
         setHorses(mappedHorses);
         
@@ -123,7 +125,7 @@ export default function Home() {
         setCourseRpci(data.rpci || 50.0);
         setCourseRpciType(data.rpci_type || 'B');
         setTrackBias('フラット'); 
-        setBiasStrength('中');
+        setBiasStrength('中'); // 初期値
         setCushionValue(9.0); 
         
         setTargetRaceName(data.race_name);
@@ -177,7 +179,7 @@ export default function Home() {
           course_type: courseType, distance: distance,
           weather: weather, track_condition: trackCondition,
           expected_pace: expectedPace, track_bias: trackBias,
-          bias_strength: biasStrength,
+          bias_strength: biasStrength, // ★ バックエンドへ送信
           cushion_value: cushionValue
         }),
       });
@@ -207,7 +209,7 @@ export default function Home() {
           course_type: courseType, distance: distance,
           weather: weather, track_condition: trackCondition,
           expected_pace: expectedPace, track_bias: trackBias,
-          bias_strength: biasStrength,
+          bias_strength: biasStrength, // ★ バックエンドへ送信
           cushion_value: cushionValue
         }),
       });
@@ -242,6 +244,7 @@ export default function Home() {
     return 'bg-green-900/70 text-green-200 border-green-600';
   };
 
+  // ★ エラー修正：ラベルテキスト取得用関数の追加
   const getPciLabelText = (pciType?: string) => {
     if (pciType === 'A') return 'A:消耗戦';
     if (pciType === 'C') return 'C:瞬発力';
@@ -405,6 +408,7 @@ export default function Home() {
                       <span className="text-[10px] text-gray-500">)</span>
                     </div>
                     
+                    {/* ★ 当日状態オーバーライドのドロップダウン追加 */}
                     <select 
                       value={horse.condition_override} 
                       onChange={(e) => handleChange(index, 'condition_override', e.target.value)} 
