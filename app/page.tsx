@@ -11,7 +11,7 @@ interface HorseData {
   kinryou: number;
   bataijuu: number;
   weight_change: number; 
-  condition_override: string; // ★追加：当日状態の手動オーバーライド
+  condition_override: string;
   zenso_chakujun: number;
   avg_agari: number;
   kyakushitsu: number;
@@ -74,7 +74,6 @@ export default function Home() {
   const [trackCondition, setTrackCondition] = useState('良');
   const [expectedPace, setExpectedPace] = useState('M_JIRIKI');
   
-  // ★ トラックバイアス（傾向）と 強度 の2軸に変更
   const [trackBias, setTrackBias] = useState('フラット'); 
   const [biasStrength, setBiasStrength] = useState('中'); 
   
@@ -112,7 +111,6 @@ export default function Home() {
       if (!response.ok) throw new Error('通信エラー');
       const data = await response.json();
       if (data.status === 'success') {
-        // fetch後にcondition_overrideの初期値を入れるようマッピング
         const mappedHorses = data.horses.map((h: any) => ({...h, condition_override: '1.00'}));
         setHorses(mappedHorses);
         
@@ -125,7 +123,7 @@ export default function Home() {
         setCourseRpci(data.rpci || 50.0);
         setCourseRpciType(data.rpci_type || 'B');
         setTrackBias('フラット'); 
-        setBiasStrength('中'); // 初期値
+        setBiasStrength('中');
         setCushionValue(9.0); 
         
         setTargetRaceName(data.race_name);
@@ -179,7 +177,7 @@ export default function Home() {
           course_type: courseType, distance: distance,
           weather: weather, track_condition: trackCondition,
           expected_pace: expectedPace, track_bias: trackBias,
-          bias_strength: biasStrength, // ★ バックエンドへ送信
+          bias_strength: biasStrength,
           cushion_value: cushionValue
         }),
       });
@@ -209,7 +207,7 @@ export default function Home() {
           course_type: courseType, distance: distance,
           weather: weather, track_condition: trackCondition,
           expected_pace: expectedPace, track_bias: trackBias,
-          bias_strength: biasStrength, // ★ バックエンドへ送信
+          bias_strength: biasStrength,
           cushion_value: cushionValue
         }),
       });
@@ -242,6 +240,12 @@ export default function Home() {
     if (pciType === 'A') return 'bg-red-900/70 text-red-200 border-red-600';
     if (pciType === 'C') return 'bg-blue-900/70 text-blue-200 border-blue-600';
     return 'bg-green-900/70 text-green-200 border-green-600';
+  };
+
+  const getPciLabelText = (pciType?: string) => {
+    if (pciType === 'A') return 'A:消耗戦';
+    if (pciType === 'C') return 'C:瞬発力';
+    return 'B:万能';
   };
 
   const getScenarioMatchLabel = (horse: DiagnosisResult) => {
@@ -304,23 +308,23 @@ export default function Home() {
             </div>
             <div>
               <label className="text-[10px] md:text-xs text-gray-400 block mb-1">距離 (m)</label>
-              <input type="number" step="100" value={distance} onChange={e => setDistance(Number(e.target.value))} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none text-sm md:text-base" />
+              <input type="number" step="100" value={distance} onChange={e => setDistance(Number(e.target.value))} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base" />
             </div>
             <div>
               <label className="text-[10px] md:text-xs text-gray-400 block mb-1">天候</label>
-              <select value={weather} onChange={e => setWeather(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none text-sm md:text-base">
+              <select value={weather} onChange={e => setWeather(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base">
                 <option value="晴">晴</option><option value="曇">曇</option><option value="雨">雨</option><option value="小雨">小雨</option>
               </select>
             </div>
             <div>
               <label className="text-[10px] md:text-xs text-gray-400 block mb-1">馬場状態</label>
-              <select value={trackCondition} onChange={e => setTrackCondition(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none text-sm md:text-base">
+              <select value={trackCondition} onChange={e => setTrackCondition(e.target.value)} className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base">
                 <option value="良">良</option><option value="稍">稍重</option><option value="重">重</option><option value="不">不良</option>
               </select>
             </div>
             <div className="col-span-2 md:col-span-1">
               <label className="text-[10px] md:text-xs text-emerald-400 font-bold block mb-1">クッション値</label>
-              <input type="number" step="0.1" value={cushionValue} onChange={e => setCushionValue(Number(e.target.value))} className="w-full bg-emerald-950 text-white font-bold rounded p-2 border border-emerald-600 focus:outline-none text-sm md:text-base" placeholder="例: 10.6" />
+              <input type="number" step="0.1" value={cushionValue} onChange={e => setCushionValue(Number(e.target.value))} className="w-full bg-emerald-950 text-white font-bold rounded p-2 border border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm md:text-base" placeholder="例: 10.6" />
             </div>
           </div>
 
@@ -328,7 +332,7 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4">
               <div>
                 <label className="text-xs md:text-sm text-blue-400 font-bold block mb-1">予想ペース・詳細展開シナリオ</label>
-                <select value={expectedPace} onChange={e => setExpectedPace(e.target.value)} className="w-full bg-blue-950 text-white font-bold rounded p-2.5 border border-blue-500 focus:outline-none text-xs md:text-sm">
+                <select value={expectedPace} onChange={e => setExpectedPace(e.target.value)} className="w-full bg-blue-950 text-white font-bold rounded p-2.5 border border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 text-xs md:text-sm">
                   <optgroup label="▼ スローペース (道中遅い・瞬発力/持続力)">
                     <option value="S_YOIDON">スロー ① 直線ヨーイドン (残り400mキレ味勝負)</option><option value="S_LONSPA">スロー ② ロンスパ・マクリ (向正面〜3角早め仕掛け)</option>
                   </optgroup>
@@ -343,7 +347,7 @@ export default function Home() {
               <div className="flex gap-2">
                 <div className="flex-grow">
                   <label className="text-xs md:text-sm text-pink-400 font-bold block mb-1">トラックバイアス (傾向)</label>
-                  <select value={trackBias} onChange={e => setTrackBias(e.target.value)} className="w-full bg-pink-950 text-white font-bold rounded p-2.5 border border-pink-600 focus:outline-none text-xs md:text-sm">
+                  <select value={trackBias} onChange={e => setTrackBias(e.target.value)} className="w-full bg-pink-950 text-white font-bold rounded p-2.5 border border-pink-600 focus:outline-none focus:ring-2 focus:ring-pink-500 text-xs md:text-sm">
                     <option value="フラット">フラット (標準)</option>
                     <option value="前残り (逃げ・先行有利)">前残り (逃げ・先行有利)</option>
                     <option value="差し有利 (外伸び)">差し有利 (外伸び)</option>
@@ -353,7 +357,7 @@ export default function Home() {
                 </div>
                 <div className="w-24">
                   <label className="text-xs md:text-sm text-pink-300 font-bold block mb-1">強度</label>
-                  <select value={biasStrength} onChange={e => setBiasStrength(e.target.value)} disabled={trackBias === "フラット"} className="w-full bg-pink-900/50 text-white font-bold rounded p-2.5 border border-pink-700 focus:outline-none text-xs md:text-sm disabled:opacity-50">
+                  <select value={biasStrength} onChange={e => setBiasStrength(e.target.value)} disabled={trackBias === "フラット"} className="w-full bg-pink-900/50 text-white font-bold rounded p-2.5 border border-pink-700 focus:outline-none focus:ring-2 focus:ring-pink-500 text-xs md:text-sm disabled:opacity-50">
                     <option value="弱">レベル1 (弱)</option>
                     <option value="中">レベル2 (中)</option>
                     <option value="極端">レベル3 (極端)</option>
@@ -383,13 +387,13 @@ export default function Home() {
                 </div>
                 <div className="flex-grow flex flex-col gap-2 w-full">
                   <div className="flex flex-wrap md:flex-nowrap gap-1.5 items-center">
-                    <input type="text" value={horse.bamei} onChange={(e) => handleChange(index, 'bamei', e.target.value)} placeholder="馬名" className="w-[42%] md:w-40 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none" />
-                    <input type="text" value={horse.kishu} onChange={(e) => handleChange(index, 'kishu', e.target.value)} placeholder="騎手" className="w-[28%] md:w-24 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm border border-blue-800/50" />
+                    <input type="text" value={horse.bamei} onChange={(e) => handleChange(index, 'bamei', e.target.value)} placeholder="馬名" className="w-[42%] md:w-40 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <input type="text" value={horse.kishu} onChange={(e) => handleChange(index, 'kishu', e.target.value)} placeholder="騎手" className="w-[28%] md:w-24 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm border border-blue-800/50 focus:outline-none" />
                     <div className="w-[25%] md:w-20 relative">
-                      <input type="number" step="0.1" value={horse.odds || ''} onChange={(e) => handleChange(index, 'odds', e.target.value)} placeholder="オッズ" className="w-full bg-gray-700 text-yellow-300 font-bold rounded p-1.5 pr-4 text-xs md:text-sm border border-yellow-800/50 text-right" />
+                      <input type="number" step="0.1" value={horse.odds || ''} onChange={(e) => handleChange(index, 'odds', e.target.value)} placeholder="オッズ" className="w-full bg-gray-700 text-yellow-300 font-bold rounded p-1.5 pr-4 text-xs md:text-sm border border-yellow-800/50 text-right focus:outline-none" />
                       <span className="absolute right-1 top-1.5 text-[9px] md:text-[10px] text-yellow-500">倍</span>
                     </div>
-                    <select value={horse.kyakushitsu} onChange={(e) => handleChange(index, 'kyakushitsu', e.target.value)} className="w-[30%] md:w-16 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1.5 border border-purple-700">
+                    <select value={horse.kyakushitsu} onChange={(e) => handleChange(index, 'kyakushitsu', e.target.value)} className="w-[30%] md:w-16 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1.5 border border-purple-700 focus:outline-none">
                       <option value="1">逃げ</option><option value="2">先行</option><option value="3">差し</option><option value="4">追込</option>
                     </select>
                     
@@ -401,7 +405,6 @@ export default function Home() {
                       <span className="text-[10px] text-gray-500">)</span>
                     </div>
                     
-                    {/* ★ 当日状態オーバーライドのドロップダウン追加 */}
                     <select 
                       value={horse.condition_override} 
                       onChange={(e) => handleChange(index, 'condition_override', e.target.value)} 
@@ -492,7 +495,6 @@ export default function Home() {
 
         {isRacing && results && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 md:p-4">
-             {/* シミュレーション画面は省略せずそのまま保持（長くなるため記述省略。既存コードと同等） */}
              <div className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-gray-900 rounded-2xl border border-gray-600 shadow-2xl p-4 md:p-6">
                 <button onClick={() => { if (resultTimerRef.current) { clearTimeout(resultTimerRef.current); resultTimerRef.current = null; } setIsRacing(false); setShowResults(false); }} className="absolute top-2 right-2 md:top-4 md:right-4 text-gray-400 hover:text-white bg-gray-800 hover:bg-red-600 rounded-full w-8 h-8 flex items-center justify-center transition z-50 font-bold">✕</button>
                 <h3 className="text-center font-bold text-gray-300 mb-3 md:mb-4 tracking-widest text-lg md:text-xl">【 RACE TRACKING 】</h3>
@@ -548,6 +550,17 @@ export default function Home() {
                       </div>
                     </div>
                   )}
+                </div>
+                <div className={`mt-4 md:mt-6 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity duration-1000 ${showResults ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}>
+                  {results.map((result, index) => (
+                    <div key={index} className={`flex flex-col p-2 md:p-3 rounded-xl border ${result.rank === 1 ? 'bg-yellow-900/40 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : result.rank <= 3 ? 'bg-gray-800 border-gray-500' : 'bg-gray-900 border-gray-800'}`}>
+                      <div className="flex items-center gap-1.5 md:gap-2">
+                        <span className={`text-sm md:text-lg font-extrabold ${result.rank === 1 ? 'text-yellow-400' : result.rank === 2 ? 'text-gray-300' : result.rank === 3 ? 'text-orange-400' : 'text-gray-600'}`}>{result.rank}着</span>
+                        <div className={`w-5 h-5 md:w-6 md:h-6 flex items-center justify-center font-bold text-[9px] md:text-[10px] rounded-full border flex-shrink-0 ${getHorseColor(result.umaban)}`}>{result.umaban}</div>
+                        <span className="text-xs md:text-sm font-bold text-gray-200 truncate flex-grow">{result.bamei}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
              </div>
           </div>
