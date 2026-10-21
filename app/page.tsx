@@ -267,7 +267,7 @@ export default function Home() {
 
         const paceTitle = PACE_SCENARIOS[recPace]?.shortTitle || recPace;
         alert(
-          `${mappedHorses.length}頭のデータを取得しました。\n(※当日の馬体重が発表されている場合は自動取得済みです)\n\n舞台RPCI: ${data.rpci || 50.0} に基づき「${paceTitle}」を自動セットしました。`
+          `${mappedHorses.length}頭のデータを取得しました。\n(※枠番・斤量・馬場状態・馬体重を自動反映済み)\n\n舞台RPCI: ${data.rpci || 50.0} に基づき「${paceTitle}」を自動セットしました。`
         );
         setDiagnosisResults(null);
         setResults(null);
@@ -588,10 +588,12 @@ export default function Home() {
                     className="w-full bg-pink-950 text-white font-bold rounded p-2.5 border border-pink-600 focus:outline-none focus:ring-2 focus:ring-pink-500 text-xs md:text-sm"
                   >
                     <option value="フラット">フラット (標準)</option>
+                    <option value="イン前有利 (1〜4枠・先行)">イン前有利 (1〜4枠・先行好位)</option>
+                    <option value="外差し有利 (5〜8枠・差し追込)">外差し有利 (5〜8枠・差し追込)</option>
                     <option value="前残り (逃げ・先行有利)">前残り (逃げ・先行有利)</option>
                     <option value="差し有利 (外伸び)">差し有利 (外伸び)</option>
-                    <option value="内枠有利 (インベタ)">内枠有利 (イン前)</option>
-                    <option value="外枠有利">外枠有利</option>
+                    <option value="内枠有利 (インベタ)">内枠有利 (1〜4枠)</option>
+                    <option value="外枠有利">外枠有利 (5〜8枠)</option>
                   </select>
                 </div>
                 <div className="w-24">
@@ -725,6 +727,7 @@ export default function Home() {
                       <option value="0.92">↓ 太め残り (0.92倍)</option>
                       <option value="0.90">↓ 仕上げ途上 (0.90倍)</option>
                       <option value="0.88">↓ 輸送細化 (0.88倍)</option>
+                      <option value="0.85">↓ パドック減点 (0.85倍)</option>
                     </select>
                   </div>
                 </div>
