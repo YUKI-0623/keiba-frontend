@@ -53,6 +53,8 @@ interface DiagnosisResult {
   role_code?: string;
   role_label?: string;
   is_bias_victim_rescued?: boolean;
+  is_jiriki_time_warn?: boolean;
+  rescue_type?: string;
   history_details: HistoryDetail[];
 }
 
@@ -69,7 +71,17 @@ interface BettingTickets {
   formation_groups: {
     axis_1st: { umaban: number; bamei: string; shisu: number; stage1_shisu: number; odds: number }[];
     main_2nd: { umaban: number; bamei: string; shisu: number; stage1_shisu: number; myoumi: number; odds: number }[];
-    saver_3rd: { umaban: number; bamei: string; shisu: number; stage1_shisu: number; stage1_rank: number; odds: number; rescued: boolean }[];
+    saver_3rd: {
+      umaban: number;
+      bamei: string;
+      shisu: number;
+      stage1_shisu: number;
+      stage1_rank: number;
+      odds: number;
+      rescued: boolean;
+      rescue_type?: string;
+      role_label?: string;
+    }[];
     eliminated: { umaban: number; bamei: string; reason: string; odds: number }[];
   };
   tansho: {
@@ -580,7 +592,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* 自動判定ステータスバー（土曜開催・未確定時の案内含む） */}
+          {/* 自動判定ステータスバー */}
           {autoStatus && (
             <div className="mb-6 grid grid-cols-1 gap-2 bg-gray-950 p-3.5 rounded-xl border border-gray-700 text-xs">
               <div
@@ -987,14 +999,25 @@ export default function Home() {
                     <div className="text-emerald-300 font-bold mb-1.5">
                       🛡️ 3列目追加（地力上位の救済ヒモ）
                     </div>
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1.5">
                       {bettingTickets.formation_groups.saver_3rd.length > 0 ? (
                         bettingTickets.formation_groups.saver_3rd.map((h) => (
                           <div key={h.umaban} className="font-bold text-white">
-                            {h.umaban}番 {h.bamei}{' '}
-                            <span className="text-[10px] text-emerald-300">
-                              (地力{h.stage1_rank}位:{h.stage1_shisu} ➔ 最終:{h.shisu})
-                            </span>
+                            <div>
+                              {h.umaban}番 {h.bamei}{' '}
+                              <span className="text-[10px] text-gray-300">
+                                (地力{h.stage1_rank}位:{h.stage1_shisu} ➔ 最終:{h.shisu})
+                              </span>
+                            </div>
+                            {h.rescue_type === 'time_warn' ? (
+                              <span className="inline-block mt-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/60 px-1.5 py-0.5 rounded text-[10px] font-extrabold">
+                                ⚠️ 地力上位・持ち時計注意
+                              </span>
+                            ) : (
+                              <span className="inline-block mt-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/60 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                🛡️ 地力上位・バイアス救済
+                              </span>
+                            )}
                           </div>
                         ))
                       ) : (
@@ -1005,7 +1028,7 @@ export default function Home() {
 
                   <div className="bg-red-950/40 border border-red-600/60 rounded-lg p-3">
                     <div className="text-red-400 font-bold mb-1.5">
-                      💀 完全消し（持ち時計不足・大幅減）
+                      💀 完全消し（地力中位以下×時計不足）
                     </div>
                     <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
                       {bettingTickets.formation_groups.eliminated.length > 0 ? (
@@ -1016,7 +1039,7 @@ export default function Home() {
                           </div>
                         ))
                       ) : (
-                        <span className="text-gray-500">時計不足の該当馬なし</span>
+                        <span className="text-gray-500">完全消しの該当馬なし</span>
                       )}
                     </div>
                   </div>
@@ -1186,7 +1209,7 @@ export default function Home() {
                         </div>
                       </div>
                       <div className="mt-2 text-[11px] text-gray-400">
-                        ※地力救済馬（バイアス被害の実力馬）が2着まで食い込むケースも丸ごとカバーする1着固定流しです。
+                        ※地力上位馬（バイアス救済・持ち時計注意馬）が2着まで食い込むケースも丸ごとカバーする1着固定流しです。
                       </div>
                     </div>
                   </div>
@@ -1196,18 +1219,20 @@ export default function Home() {
 
             {/* 各馬の2段階指数カード一覧 */}
             <div className="grid md:grid-cols-2 gap-4">
-              {displayedDiagnosis.map((horse, index) => {
+              {displayedDiagnosis.map((horse) => {
                 const matchLabel = getScenarioMatchLabel(horse);
                 const roleBadgeColor =
                   horse.role_code === 'AXIS_1ST'
                     ? 'bg-yellow-500 text-gray-950'
                     : horse.role_code === 'MAIN_2ND'
                       ? 'bg-pink-600 text-white'
-                      : horse.role_code === 'SAVER_3RD'
-                        ? 'bg-emerald-600 text-white'
-                        : horse.role_code === 'ELIMINATED'
-                          ? 'bg-red-800 text-red-100'
-                          : 'bg-gray-700 text-gray-300';
+                      : horse.role_code === 'SAVER_3RD_TIME_WARN'
+                        ? 'bg-amber-500 text-gray-950 font-black'
+                        : horse.role_code === 'SAVER_3RD'
+                          ? 'bg-emerald-600 text-white'
+                          : horse.role_code === 'ELIMINATED'
+                            ? 'bg-red-800 text-red-100'
+                            : 'bg-gray-700 text-gray-300';
 
                 return (
                   <div
@@ -1217,16 +1242,18 @@ export default function Home() {
                         ? 'border-yellow-500'
                         : horse.role_code === 'MAIN_2ND'
                           ? 'border-pink-500/80'
-                          : horse.role_code === 'SAVER_3RD'
-                            ? 'border-emerald-500/80'
-                            : horse.role_code === 'ELIMINATED'
-                              ? 'border-red-800/70 opacity-75'
-                              : 'border-gray-700'
+                          : horse.role_code === 'SAVER_3RD_TIME_WARN'
+                            ? 'border-amber-500/90'
+                            : horse.role_code === 'SAVER_3RD'
+                              ? 'border-emerald-500/80'
+                              : horse.role_code === 'ELIMINATED'
+                                ? 'border-red-800/70 opacity-75'
+                                : 'border-gray-700'
                     }`}
                   >
                     {horse.role_label && (
                       <div
-                        className={` existing-badge absolute top-0 right-0 text-[9px] md:text-[10px] font-bold px-2.5 py-1 rounded-bl-lg shadow-md ${roleBadgeColor}`}
+                        className={`existing-badge absolute top-0 right-0 text-[9px] md:text-[10px] font-bold px-2.5 py-1 rounded-bl-lg shadow-md ${roleBadgeColor}`}
                       >
                         {horse.role_label}
                       </div>
@@ -1260,11 +1287,16 @@ export default function Home() {
                               : horse.weight_change}
                             )
                           </span>
-                          {horse.time_limit_mult !== undefined && horse.time_limit_mult <= 0.88 && (
-                            <span className="bg-red-900/80 text-red-200 border border-red-500 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                              ⚠️ 時計壁減点 ({horse.time_limit_mult}倍)
+                          {horse.is_jiriki_time_warn ? (
+                            <span className="bg-amber-900/80 text-amber-200 border border-amber-500 text-[10px] font-extrabold px-1.5 py-0.5 rounded">
+                              ⚠️ 地力上位・持ち時計注意 ({horse.time_limit_mult}倍)
                             </span>
-                          )}
+                          ) : horse.time_limit_mult !== undefined &&
+                            horse.time_limit_mult <= 0.88 ? (
+                            <span className="bg-red-900/80 text-red-200 border border-red-500 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                              ❌ 持ち時計不足 ({horse.time_limit_mult}倍)
+                            </span>
+                          ) : null}
                           {matchLabel && (
                             <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 text-[10px] font-bold px-1.5 py-0.5 rounded">
                               {matchLabel}
