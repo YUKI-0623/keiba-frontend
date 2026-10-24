@@ -59,6 +59,8 @@ interface DiagnosisResult {
 }
 
 interface AutoStatusInfo {
+  odds_status?: string;
+  odds_message?: string;
   pace_status: string;
   pace_message: string;
   bias_status: string;
@@ -356,16 +358,12 @@ export default function Home() {
         setTargetPlace(data.place_name || '');
         setAutoStatus(data.auto_status || null);
 
-        const biasNotice =
-          data.auto_status?.bias_status === 'manual_required'
-            ? `\n\n${data.auto_status.bias_message}`
-            : `\n\n${data.auto_status?.bias_message || ''}`;
-
         alert(
           `${mappedHorses.length}頭の出馬表と環境データを取得しました！\n\n` +
-            `${data.auto_status?.pace_message || ''}` +
-            biasNotice +
-            `\n\n${data.auto_status?.weight_message || ''}`
+            `${data.auto_status?.odds_message || ''}\n\n` +
+            `${data.auto_status?.pace_message || ''}\n\n` +
+            `${data.auto_status?.bias_message || ''}\n\n` +
+            `${data.auto_status?.weight_message || ''}`
         );
 
         setDiagnosisResults(null);
@@ -534,14 +532,14 @@ export default function Home() {
           PRO仕様 競馬本格シミュレーター
         </h1>
         <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
-          [ 全自動バイアス・展開・体重判定 × 2段階指数(素の地力➔最終) × 3連系フォーメーション自動構築 ]
+          [ ハイブリッドオッズ自動取得 × 全自動バイアス・展開・体重判定 × 2段階指数 × 3連系自動構築 ]
         </p>
 
         {/* STEP 1 */}
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-grow w-full">
             <label className="text-sm text-gray-400 block mb-2 font-bold">
-              STEP 1: 🌐 レースIDから出馬表・展開・トラックバイアス・馬体重補正を全自動取得
+              STEP 1: 🌐 レースIDから出馬表・オッズ(過去HTML/未来JS自動切替)・展開・バイアス・馬体重を全自動取得
             </label>
             <input
               type="text"
@@ -556,7 +554,7 @@ export default function Home() {
             disabled={fetching}
             className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 md:py-4 px-8 rounded-lg shadow-lg transition whitespace-nowrap disabled:opacity-50"
           >
-            {fetching ? '環境＆出馬表を解析中...' : '出馬表を取り込む ↓'}
+            {fetching ? '環境＆オッズを解析中...' : '出馬表を取り込む ↓'}
           </button>
         </div>
 
@@ -595,6 +593,17 @@ export default function Home() {
           {/* 自動判定ステータスバー */}
           {autoStatus && (
             <div className="mb-6 grid grid-cols-1 gap-2 bg-gray-950 p-3.5 rounded-xl border border-gray-700 text-xs">
+              {autoStatus.odds_message && (
+                <div
+                  className={`p-2.5 rounded-lg border font-bold ${
+                    autoStatus.odds_status === 'manual_required'
+                      ? 'bg-amber-950/70 border-amber-500/80 text-amber-200'
+                      : 'bg-yellow-950/60 border-yellow-600/70 text-yellow-200'
+                  }`}
+                >
+                  {autoStatus.odds_message}
+                </div>
+              )}
               <div
                 className={`p-2.5 rounded-lg border font-bold ${
                   autoStatus.bias_status === 'auto_detected'
@@ -1047,7 +1056,6 @@ export default function Home() {
 
                 {/* 全5種・7パターンの馬券出力テーブル */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
-                  {/* 単勝・複勝・ワイド */}
                   <div className="bg-gray-900 border border-gray-700 rounded-lg p-3.5 flex flex-col gap-3">
                     <div>
                       <div className="flex justify-between items-center font-bold text-amber-400 border-b border-gray-800 pb-1 mb-1.5">
@@ -1105,7 +1113,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* 3連複（1頭軸流し ＆ フォーメーション） */}
                   <div className="bg-gray-900 border border-gray-700 rounded-lg p-3.5 flex flex-col gap-3">
                     <div>
                       <div className="flex justify-between items-center font-bold text-emerald-400 border-b border-gray-800 pb-1 mb-1.5">
@@ -1153,7 +1160,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* 3連単（フォーメーション ＆ 1着固定流し） */}
                   <div className="md:col-span-2 bg-gradient-to-r from-indigo-950/60 to-purple-950/60 border border-indigo-400/70 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <div className="flex justify-between items-center font-extrabold text-yellow-300 border-b border-indigo-700 pb-1.5 mb-2">
@@ -1306,7 +1312,6 @@ export default function Home() {
                       </div>
 
                       <div className="flex gap-2.5 md:gap-3.5 text-right items-end">
-                        {/* Stage 1: 素の地力指数 */}
                         <div className="flex flex-col items-end border-r border-gray-700 pr-2.5">
                           <div className="text-[9px] md:text-[10px] text-slate-400 font-bold">
                             ①素の地力 ({horse.stage1_rank}位)
@@ -1316,7 +1321,6 @@ export default function Home() {
                           </div>
                         </div>
 
-                        {/* 妙味指数 */}
                         {horse.odds > 0 && (
                           <div className="flex flex-col items-end border-r border-gray-700 pr-2.5">
                             <div className="text-[9px] md:text-[10px] text-pink-400 font-bold">
@@ -1330,7 +1334,6 @@ export default function Home() {
                           </div>
                         )}
 
-                        {/* Stage 2: 最終指数 */}
                         <div className="flex flex-col items-end">
                           <div className="text-[9px] md:text-[10px] text-indigo-300 font-bold">
                             ②最終指数 ({horse.stage2_rank}位)
