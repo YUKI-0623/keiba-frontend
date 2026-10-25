@@ -13,6 +13,9 @@ interface HorseData {
   weight_change: number;
   condition_override: string;
   condition_reason?: string;
+  training_rank?: string;
+  rotation_mult?: number;
+  rotation_label?: string;
   zenso_chakujun: number;
   avg_agari: number;
   kyakushitsu: number;
@@ -46,6 +49,9 @@ interface DiagnosisResult {
   pci_type: string;
   bataijuu: number;
   weight_change: number;
+  training_rank?: string;
+  rotation_label?: string;
+  pedigree_label?: string;
   time_limit_mult?: number;
   bias_mult?: number;
   pace_mult?: number;
@@ -71,8 +77,21 @@ interface AutoStatusInfo {
 
 interface BettingTickets {
   formation_groups: {
-    axis_1st: { umaban: number; bamei: string; shisu: number; stage1_shisu: number; odds: number }[];
-    main_2nd: { umaban: number; bamei: string; shisu: number; stage1_shisu: number; myoumi: number; odds: number }[];
+    axis_1st: {
+      umaban: number;
+      bamei: string;
+      shisu: number;
+      stage1_shisu: number;
+      odds: number;
+    }[];
+    main_2nd: {
+      umaban: number;
+      bamei: string;
+      shisu: number;
+      stage1_shisu: number;
+      myoumi: number;
+      odds: number;
+    }[];
     saver_3rd: {
       umaban: number;
       bamei: string;
@@ -126,6 +145,21 @@ interface BettingTickets {
     combos: string[];
     count: number;
   };
+}
+
+interface AxisDefensePlan {
+  level: 'HIGH' | 'MEDIUM' | 'RISK';
+  badgeText: string;
+  headline: string;
+  reason: string;
+  tatemeBoxTargets: { umaban: number; bamei: string; shisu: number; odds: number }[];
+  tatemeBoxCombos: string[];
+  tatemeBoxCount: number;
+  reverseFirst: number[];
+  reverseSecond: number[];
+  reverseThird: number[];
+  reverseCombos: string[];
+  reverseCount: number;
 }
 
 interface RaceResult {
@@ -234,8 +268,126 @@ function getHorseSvgColors(umaban: number): { bg: string; text: string; border: 
   return colors[(umaban - 1) % 8] || { bg: '#6b7280', text: '#ffffff', border: '#374151' };
 }
 
+/**
+ * ★アプローチ⑤: 軸信頼度ジャッジ ＆ 軸飛び（タテ目）防御BOX・逆転フォーメーション自動構築関数
+ */
+function buildAxisDefensePlan(
+  diagnosis: DiagnosisResult[] | null,
+  tickets: BettingTickets | null
+): AxisDefensePlan | null {
+  if (!diagnosis || diagnosis.length < 3 || !tickets) return null;
+
+  const byStage2 = [...diagnosis].sort((a, b) => b.shisu - a.shisu);
+  const byStage1 = [...diagnosis].sort((a, b) => b.stage1_shisu - a.stage1_shisu);
+  const byOdds = [...diagnosis].filter((d) => d.odds > 0).sort((a, b) => a.odds - b.odds);
+
+  const axisGroup = tickets.formation_groups.axis_1st[0];
+  const axisHorse = diagnosis.find((d) => d.umaban === axisGroup?.umaban) || byStage2[0];
+  const secondHorse = byStage2.find((d) => d.umaban !== axisHorse.umaban) || byStage2[1];
+  const fav1Horse = byOdds.length > 0 ? byOdds[0] : axisHorse;
+
+  const shisuGap = Number((axisHorse.shisu - secondHorse.shisu).toFixed(1));
+
+  // 波乱・タテ目リスク判定
+  let level: 'HIGH' | 'MEDIUM' | 'RISK' = 'HIGH';
+  let badgeText = '👑 軸信頼度: S（鉄板1着固定推奨）';
+  let headline = `${axisHorse.umaban}番 ${axisHorse.bamei} の1着固定が本線（2位と+${shisuGap}pt差）`;
+  let reason = `『①素の地力(${axisHorse.stage1_rank}位)』と『②最終指数(1位)』がともにトップクラスで安定しており、1着固定フォーメーションが最も資金効率に優れます。`;
+
+  // 1番人気が過剰人気で指数上位から落ちている、または1着軸が地力3位以下、または指数差が極小の場合
+  const fav1IsVulnerable =
+    fav1Horse.odds <= 2.8 && (fav1Horse.stage2_rank >= 3 || fav1Horse.stage1_rank >= 3);
+  const axisNotPureTop = axisHorse.stage1_rank >= 3 || shisuGap < 1.8;
+
+  if (fav1IsVulnerable || (axisHorse.odds <= 2.5 && axisHorse.stage1_rank >= 2) || shisuGap < 1.5) {
+    level = 'RISK';
+    badgeText = '🚨 軸信頼度: B（波乱・タテ目厳重警戒モード）';
+    if (fav1IsVulnerable && fav1Horse.umaban !== axisHorse.umaban) {
+      headline = `⚠️ 1番人気(${fav1Horse.umaban}番${fav1Horse.bamei}:${fav1Horse.odds}倍)に波乱リスク！タテ目BOX＆逆転ケア推奨`;
+      reason = `単勝${fav1Horse.odds}倍の1番人気${fav1Horse.bamei}が素の地力${fav1Horse.stage1_rank}位・最終${fav1Horse.stage2_rank}位に留まっています。人気馬飛びや相手上位同士で決着する『タテ目』の期待値が極めて高いレースです。`;
+    } else {
+      headline = `⚠️ 1位(${axisHorse.umaban}番)と2位(${secondHorse.umaban}番)の指数差が${shisuGap}ptと僅差！軸飛び・頭逆転ケア推奨`;
+      reason = `1着軸(${axisHorse.bamei})が素の地力${axisHorse.stage1_rank}位、または2位(${secondHorse.bamei})との能力差が僅少です。1着固定だけでなく、下の『⑧タテ目保険3連複BOX』と『⑨頭逆転フォーメーション』の併用を強く推奨します。`;
+    }
+  } else if (axisNotPureTop || shisuGap < 3.5) {
+    level = 'MEDIUM';
+    badgeText = '⚡ 軸信頼度: A（2列目逆転・タテ目小口保険推奨）';
+    headline = `本線は${axisHorse.umaban}番${axisHorse.bamei}も、相手上位(${secondHorse.umaban}番など)の頭突き抜け・タテ目に注意`;
+    reason = `2位馬との指数差は+${shisuGap}pt（地力1位は${byStage1[0].umaban}番${byStage1[0].bamei}）です。3連単1着固定をメインにしつつ、念のため『⑧タテ目保険BOX』を少額押さえると取りこぼしを防げます。`;
+  }
+
+  // ⑧ タテ目保険（軸抜き相手上位＋地力上位の4〜5頭 3連複BOX）の構築
+  const candidatePool: DiagnosisResult[] = [];
+  const main2ndUmabans = tickets.formation_groups.main_2nd.map((m) => m.umaban);
+  const saver3rdUmabans = tickets.formation_groups.saver_3rd.map((s) => s.umaban);
+
+  for (const u of [...main2ndUmabans, ...saver3rdUmabans]) {
+    const found = diagnosis.find((d) => d.umaban === u);
+    if (found && !candidatePool.some((c) => c.umaban === found.umaban)) {
+      candidatePool.push(found);
+    }
+  }
+  for (const d of byStage2) {
+    if (d.umaban !== axisHorse.umaban && !candidatePool.some((c) => c.umaban === d.umaban)) {
+      if ((d.time_limit_mult ?? 1.0) > 0.88 && (d.condition_mult ?? 1.0) > 0.88) {
+        candidatePool.push(d);
+      }
+    }
+    if (candidatePool.length >= 5) break;
+  }
+
+  const boxHorses = candidatePool
+    .sort((a, b) => b.shisu + b.stage1_shisu * 0.5 - (a.shisu + a.stage1_shisu * 0.5))
+    .slice(0, 5);
+
+  const boxUmabans = boxHorses.map((h) => h.umaban).sort((a, b) => a - b);
+  const tatemeBoxCombos: string[] = [];
+  for (let i = 0; i < boxUmabans.length; i++) {
+    for (let j = i + 1; j < boxUmabans.length; j++) {
+      for (let k = j + 1; k < boxUmabans.length; k++) {
+        tatemeBoxCombos.push(`${boxUmabans[i]} - ${boxUmabans[j]} - ${boxUmabans[k]}`);
+      }
+    }
+  }
+
+  // ⑨ 頭逆転ケア（1着: 2列目本線上位2頭 ➔ 2着: 1着軸 ➔ 3着: 相手本線＋地力救済）
+  const reverseFirst = main2ndUmabans.slice(0, 2);
+  const reverseSecond = [axisHorse.umaban];
+  const reverseThird = Array.from(new Set([...main2ndUmabans, ...saver3rdUmabans])).slice(0, 6);
+  const reverseCombos: string[] = [];
+  for (const f of reverseFirst) {
+    for (const s of reverseSecond) {
+      for (const t of reverseThird) {
+        if (f !== s && s !== t && f !== t) {
+          reverseCombos.push(`${f} → ${s} → ${t}`);
+        }
+      }
+    }
+  }
+
+  return {
+    level,
+    badgeText,
+    headline,
+    reason,
+    tatemeBoxTargets: boxHorses.map((h) => ({
+      umaban: h.umaban,
+      bamei: h.bamei,
+      shisu: h.shisu,
+      odds: h.odds,
+    })),
+    tatemeBoxCombos,
+    tatemeBoxCount: tatemeBoxCombos.length,
+    reverseFirst,
+    reverseSecond,
+    reverseThird,
+    reverseCombos,
+    reverseCount: reverseCombos.length,
+  };
+}
+
 export default function Home() {
-  const [raceId, setRaceId] = useState('202605040411');
+  const [raceId, setRaceId] = useState('202608040911');
   const [fetching, setFetching] = useState(false);
 
   const [targetRaceName, setTargetRaceName] = useState('');
@@ -267,6 +419,9 @@ export default function Home() {
       weight_change: 0,
       condition_override: '1.00',
       condition_reason: '',
+      training_rank: 'B',
+      rotation_mult: 1.0,
+      rotation_label: '',
       zenso_chakujun: 9,
       avg_agari: 35.0,
       kyakushitsu: 2,
@@ -331,6 +486,9 @@ export default function Home() {
           weight_change: Number(h.weight_change ?? 0),
           condition_override: String(h.condition_override ?? '1.00'),
           condition_reason: String(h.condition_reason ?? ''),
+          training_rank: String(h.training_rank ?? 'B'),
+          rotation_mult: Number(h.rotation_mult ?? 1.0),
+          rotation_label: String(h.rotation_label ?? ''),
           zenso_chakujun: Number(h.zenso_chakujun ?? 9),
           avg_agari: Number(h.avg_agari ?? 35.0),
           kyakushitsu: Number(h.kyakushitsu ?? 2),
@@ -359,7 +517,7 @@ export default function Home() {
         setAutoStatus(data.auto_status || null);
 
         alert(
-          `${mappedHorses.length}頭の出馬表と環境データを取得しました！\n\n` +
+          `${mappedHorses.length}頭の出馬表・血統・ローテ・環境データを取得しました！\n\n` +
             `${data.auto_status?.odds_message || ''}\n\n` +
             `${data.auto_status?.pace_message || ''}\n\n` +
             `${data.auto_status?.bias_message || ''}\n\n` +
@@ -391,7 +549,9 @@ export default function Home() {
       field === 'kishu' ||
       field === 'pci_type' ||
       field === 'condition_override' ||
-      field === 'condition_reason'
+      field === 'condition_reason' ||
+      field === 'training_rank' ||
+      field === 'rotation_label'
     ) {
       current[field] = value;
     } else {
@@ -525,28 +685,30 @@ export default function Home() {
       )
     : null;
 
+  const axisDefensePlan = buildAxisDefensePlan(diagnosisResults, bettingTickets);
+
   return (
     <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl md:text-3xl font-bold mb-2 text-center text-red-500">
-          PRO仕様 競馬本格シミュレーター
+          PRO仕様 競馬本格シミュレーター (完成度90%到達版)
         </h1>
         <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
-          [ ハイブリッドオッズ自動取得 × 全自動バイアス・展開・体重判定 × 2段階指数 × 3連系自動構築 ]
+          [ ①DB×5走柱統合 × ②重賞着差・上がり順位 × ③血統距離適性 × ④ローテ・追切 × ⑤軸飛びタテ目防御 ]
         </p>
 
         {/* STEP 1 */}
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-grow w-full">
             <label className="text-sm text-gray-400 block mb-2 font-bold">
-              STEP 1: 🌐 レースIDから出馬表・オッズ(過去HTML/未来JS自動切替)・展開・バイアス・馬体重を全自動取得
+              STEP 1: 🌐 レースIDから出馬表・5走柱・血統・ローテ・オッズ・バイアスを全自動取得
             </label>
             <input
               type="text"
               value={raceId}
               onChange={(e) => setRaceId(e.target.value)}
               className="w-full bg-gray-900 text-white rounded-lg p-3 md:p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600 font-mono text-lg"
-              placeholder="例: 202605040411"
+              placeholder="例: 202608040911"
             />
           </div>
           <button
@@ -554,14 +716,14 @@ export default function Home() {
             disabled={fetching}
             className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 md:py-4 px-8 rounded-lg shadow-lg transition whitespace-nowrap disabled:opacity-50"
           >
-            {fetching ? '環境＆オッズを解析中...' : '出馬表を取り込む ↓'}
+            {fetching ? '5走柱＆血統・ローテ解析中...' : '出馬表を取り込む ↓'}
           </button>
         </div>
 
         {/* STEP 2 */}
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
           <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-300">
-            STEP 2: 自動判定ステータス確認 ＆ 2段階全頭診断（地力 ➔ 展開・バイアス加味）
+            STEP 2: 自動判定ステータス・追切ランク設定 ＆ 2段階全頭診断
           </h2>
 
           {targetRaceName && (
@@ -812,16 +974,16 @@ export default function Home() {
                       value={horse.bamei}
                       onChange={(e) => handleChange(index, 'bamei', e.target.value)}
                       placeholder="馬名"
-                      className="w-[42%] md:w-40 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-[40%] md:w-36 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                     <input
                       type="text"
                       value={horse.kishu}
                       onChange={(e) => handleChange(index, 'kishu', e.target.value)}
                       placeholder="騎手"
-                      className="w-[28%] md:w-24 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm border border-blue-800/50 focus:outline-none"
+                      className="w-[26%] md:w-20 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm border border-blue-800/50 focus:outline-none"
                     />
-                    <div className="w-[25%] md:w-20 relative">
+                    <div className="w-[26%] md:w-20 relative">
                       <input
                         type="number"
                         step="0.1"
@@ -837,7 +999,7 @@ export default function Home() {
                     <select
                       value={horse.kyakushitsu}
                       onChange={(e) => handleChange(index, 'kyakushitsu', e.target.value)}
-                      className="w-[30%] md:w-16 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1.5 border border-purple-700 focus:outline-none"
+                      className="w-[24%] md:w-16 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1.5 border border-purple-700 focus:outline-none"
                     >
                       <option value="1">逃げ</option>
                       <option value="2">先行</option>
@@ -858,29 +1020,50 @@ export default function Home() {
                         type="number"
                         value={horse.weight_change}
                         onChange={(e) => handleChange(index, 'weight_change', e.target.value)}
-                        className={`w-8 bg-transparent font-bold text-xs text-center focus:outline-none ${horse.weight_change > 0 ? 'text-red-400' : horse.weight_change < 0 ? 'text-blue-400' : 'text-gray-300'}`}
+                        className={`w-7 bg-transparent font-bold text-xs text-center focus:outline-none ${horse.weight_change > 0 ? 'text-red-400' : horse.weight_change < 0 ? 'text-blue-400' : 'text-gray-300'}`}
                       />
                       <span className="text-[10px] text-gray-500">)</span>
                     </div>
 
+                    {/* 追切ランク ワンタップ補正プルダウン */}
+                    <select
+                      value={horse.training_rank || 'B'}
+                      onChange={(e) => handleChange(index, 'training_rank', e.target.value)}
+                      className={`w-[36%] md:w-28 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${
+                        horse.training_rank === 'S'
+                          ? 'bg-amber-900/70 text-yellow-300 border-yellow-500'
+                          : horse.training_rank === 'A'
+                            ? 'bg-emerald-900/60 text-emerald-200 border-emerald-500'
+                            : horse.training_rank === 'C'
+                              ? 'bg-red-950 text-red-300 border-red-600'
+                              : 'bg-gray-800 text-gray-300 border-gray-600'
+                      }`}
+                      title="最終追い切り評価（Cに設定すると2列目本線から除外されます）"
+                    >
+                      <option value="S">🔥 追切S:抜群 (1.05倍)</option>
+                      <option value="A">✨ 追切A:好調 (1.03倍)</option>
+                      <option value="B">ー 追切B:標準 (1.00倍)</option>
+                      <option value="C">⚠️ 追切C:割引 (0.92倍)</option>
+                    </select>
+
                     <select
                       value={horse.condition_override}
                       onChange={(e) => handleChange(index, 'condition_override', e.target.value)}
-                      className={`w-[45%] md:w-36 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${horse.condition_override === '1.00' ? 'bg-gray-800 text-gray-400 border-gray-700' : Number(horse.condition_override) > 1.0 ? 'bg-green-900/50 text-green-300 border-green-600' : 'bg-red-900/50 text-red-300 border-red-600'}`}
+                      className={`w-[38%] md:w-32 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${horse.condition_override === '1.00' ? 'bg-gray-800 text-gray-400 border-gray-700' : Number(horse.condition_override) > 1.0 ? 'bg-green-900/50 text-green-300 border-green-600' : 'bg-red-900/50 text-red-300 border-red-600'}`}
                     >
-                      <option value="1.05">↑ 究極仕上げ (1.05倍)</option>
-                      <option value="1.04">↑ 太め解消 (1.04倍)</option>
-                      <option value="1.03">↑ 成長分 (1.03倍)</option>
-                      <option value="1.00">- 通常 (補正なし)</option>
-                      <option value="0.92">↓ 太め残り (0.92倍)</option>
-                      <option value="0.90">↓ 仕上げ途上 (0.90倍)</option>
-                      <option value="0.88">↓ 輸送細化 (0.88倍)</option>
-                      <option value="0.85">↓ パドック減点 (0.85倍)</option>
+                      <option value="1.04">↑ 好仕上 (1.04倍)</option>
+                      <option value="1.03">↑ 充実/絞込 (1.03倍)</option>
+                      <option value="1.02">↑ 成長分 (1.02倍)</option>
+                      <option value="1.00">- 馬体標準 (1.00倍)</option>
+                      <option value="0.97">↓ 微減点 (0.97倍)</option>
+                      <option value="0.95">↓ 太め注意 (0.95倍)</option>
+                      <option value="0.94">↓ 細化注意 (0.94倍)</option>
+                      <option value="0.88">↓ 極端減点 (0.88倍)</option>
                     </select>
                   </div>
                   {horse.condition_reason && (
                     <div className="text-[10px] text-gray-400 pl-1">
-                      💡 自動判定根拠: <span className="text-gray-300">{horse.condition_reason}</span>
+                      💡 自動解析: <span className="text-gray-200">{horse.condition_reason}</span>
                     </div>
                   )}
                 </div>
@@ -897,7 +1080,7 @@ export default function Home() {
             >
               {isDiagnosing
                 ? '分析中...'
-                : '🔍 第1段階：枠・バイアス・体重抜きの『素の地力全頭診断 (Stage 1)』'}
+                : '🔍 第1段階：枠・バイアス・体重抜きの『素の地力＋血統距離診断 (Stage 1)』'}
             </button>
             <button
               onClick={() => runDiagnosisWithMode('STAGE2')}
@@ -906,7 +1089,7 @@ export default function Home() {
             >
               {isDiagnosing
                 ? '分析中...'
-                : '📊 第2段階：枠・バイアス・体重・展開を加味して最終診断 ＆ 推奨馬券出力！'}
+                : '📊 第2段階：枠・バイアス・ローテ・追切・道悪を加味して最終診断 ＆ 推奨馬券出力！'}
             </button>
           </div>
         </div>
@@ -937,7 +1120,7 @@ export default function Home() {
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  ② 展開・バイアス加味順 (Stage 2)
+                  ② 展開・バイアス・ローテ加味順 (Stage 2)
                 </button>
               </div>
             </div>
@@ -967,17 +1150,49 @@ export default function Home() {
               </p>
             </div>
 
-            {/* 🎫 推奨馬券パネル（全5種・7パターン） */}
+            {/* 🎫 推奨馬券パネル（アプローチ⑤：軸信頼度ジャッジ＆タテ目BOX搭載） */}
             {bettingTickets && (
               <div className="mb-8 bg-gray-950 border-2 border-indigo-500/70 rounded-xl p-4 md:p-6 shadow-xl">
                 <h3 className="text-base md:text-lg font-extrabold text-yellow-400 mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
-                  🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 推奨買い目
+                  🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 軸飛び防御買い目
                 </h3>
 
-                {/* 4役割の分類サマリー */}
+                {/* ★アプローチ⑤: 軸信頼度ジャッジバナー */}
+                {axisDefensePlan && (
+                  <div
+                    className={`mb-5 p-3.5 md:p-4 rounded-xl border-2 ${
+                      axisDefensePlan.level === 'RISK'
+                        ? 'bg-red-950/60 border-red-500 text-red-100'
+                        : axisDefensePlan.level === 'MEDIUM'
+                          ? 'bg-amber-950/50 border-amber-500/80 text-amber-100'
+                          : 'bg-emerald-950/50 border-emerald-500/80 text-emerald-100'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                      <span
+                        className={`text-[11px] md:text-xs font-black px-2.5 py-0.5 rounded-full ${
+                          axisDefensePlan.level === 'RISK'
+                            ? 'bg-red-500 text-white'
+                            : axisDefensePlan.level === 'MEDIUM'
+                              ? 'bg-amber-400 text-gray-950'
+                              : 'bg-emerald-400 text-gray-950'
+                        }`}
+                      >
+                        {axisDefensePlan.badgeText}
+                      </span>
+                      <span className="text-xs md:text-sm font-extrabold text-white">
+                        {axisDefensePlan.headline}
+                      </span>
+                    </div>
+                    <p className="text-[11px] md:text-xs text-gray-200 leading-relaxed">
+                      {axisDefensePlan.reason}
+                    </p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6 text-xs">
                   <div className="bg-yellow-950/40 border border-yellow-600/60 rounded-lg p-3">
-                    <div className="text-yellow-400 font-bold mb-1.5">👑 1列目（不動の1着軸）</div>
+                    <div className="text-yellow-400 font-bold mb-1.5">👑 1列目（1着軸本命）</div>
                     {bettingTickets.formation_groups.axis_1st.map((h) => (
                       <div key={h.umaban} className="font-bold text-white text-sm">
                         {h.umaban}番 {h.bamei}
@@ -1037,7 +1252,7 @@ export default function Home() {
 
                   <div className="bg-red-950/40 border border-red-600/60 rounded-lg p-3">
                     <div className="text-red-400 font-bold mb-1.5">
-                      💀 完全消し（地力中位以下×時計不足）
+                      💀 完全消し（地力下位×時計/状態難）
                     </div>
                     <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
                       {bettingTickets.formation_groups.eliminated.length > 0 ? (
@@ -1054,7 +1269,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* 全5種・7パターンの馬券出力テーブル */}
+                {/* 馬券出力テーブル */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
                   <div className="bg-gray-900 border border-gray-700 rounded-lg p-3.5 flex flex-col gap-3">
                     <div>
@@ -1163,7 +1378,7 @@ export default function Home() {
                   <div className="md:col-span-2 bg-gradient-to-r from-indigo-950/60 to-purple-950/60 border border-indigo-400/70 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <div className="flex justify-between items-center font-extrabold text-yellow-300 border-b border-indigo-700 pb-1.5 mb-2">
-                        <span>⑥ 3連単（フォーメーション）【勝負馬券】</span>
+                        <span>⑥ 3連単（フォーメーション）【本線勝負馬券】</span>
                         <span className="text-xs bg-yellow-500 text-gray-900 font-black px-2.5 py-0.5 rounded">
                           計 {bettingTickets.sanrentan_formation.count} 点
                         </span>
@@ -1219,6 +1434,75 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
+
+                  {/* ★アプローチ⑤: ⑧タテ目保険3連複BOX ＆ ⑨頭逆転フォーメーション */}
+                  {axisDefensePlan && (
+                    <div className="md:col-span-2 bg-gradient-to-r from-rose-950/70 via-amber-950/50 to-gray-900 border-2 border-rose-500/80 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex justify-between items-center font-extrabold text-rose-300 border-b border-rose-700/70 pb-1.5 mb-2">
+                          <span>⑧ 【軸飛び・タテ目保険】相手上位 3連複BOX</span>
+                          <span className="text-xs bg-rose-600 text-white font-black px-2.5 py-0.5 rounded">
+                            計 {axisDefensePlan.tatemeBoxCount} 点
+                          </span>
+                        </div>
+                        <div className="text-xs space-y-1">
+                          <div className="font-mono font-bold text-white">
+                            BOX対象 ({axisDefensePlan.tatemeBoxTargets.length}頭):{' '}
+                            <span className="text-rose-300 font-extrabold">
+                              {axisDefensePlan.tatemeBoxTargets.map((t) => `${t.umaban}番`).join(', ')}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-gray-300">
+                            内訳:{' '}
+                            {axisDefensePlan.tatemeBoxTargets
+                              .map((t) => `${t.umaban}${t.bamei}(${t.odds}倍)`)
+                              .join(' / ')}
+                          </div>
+                        </div>
+                        <div className="mt-2 text-[11px] text-rose-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
+                          {axisDefensePlan.tatemeBoxCombos.join(' / ')}
+                        </div>
+                        <div className="mt-1 text-[10px] text-gray-400">
+                          ※万が一1着軸が馬券外に飛んだ際、2列目・3列目の実力馬同士で決着する高配当タテ目を完全に拾う保険BOXです。
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center font-extrabold text-amber-300 border-b border-amber-700/70 pb-1.5 mb-2">
+                          <span>⑨ 【頭逆転ケア】2列目1着 ➔ 本命2着 3連単</span>
+                          <span className="text-xs bg-amber-500 text-gray-950 font-black px-2.5 py-0.5 rounded">
+                            計 {axisDefensePlan.reverseCount} 点
+                          </span>
+                        </div>
+                        <div className="font-mono text-xs space-y-1">
+                          <div>
+                            1着(相手本線上位):{' '}
+                            <span className="text-pink-300 font-extrabold">
+                              {axisDefensePlan.reverseFirst.join(', ')}番
+                            </span>
+                          </div>
+                          <div>
+                            2着(本命軸):{' '}
+                            <span className="text-yellow-300 font-extrabold">
+                              {axisDefensePlan.reverseSecond.join(', ')}番
+                            </span>
+                          </div>
+                          <div>
+                            3着(ヒモ):{' '}
+                            <span className="text-emerald-300 font-extrabold">
+                              {axisDefensePlan.reverseThird.join(', ')}番
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mt-2 text-[11px] text-amber-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
+                          {axisDefensePlan.reverseCombos.join(' / ')}
+                        </div>
+                        <div className="mt-1 text-[10px] text-gray-400">
+                          ※2列目本線の馬が勝ち切り、1着軸が2着に惜敗するパターンを最小点数で押さえる逆転フォーメーションです。
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1293,6 +1577,38 @@ export default function Home() {
                               : horse.weight_change}
                             )
                           </span>
+                          {horse.training_rank && horse.training_rank !== 'B' && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold border ${
+                                horse.training_rank === 'S'
+                                  ? 'bg-amber-900/80 text-yellow-300 border-yellow-500'
+                                  : horse.training_rank === 'A'
+                                    ? 'bg-emerald-900/80 text-emerald-200 border-emerald-500'
+                                    : 'bg-red-950 text-red-300 border-red-500'
+                              }`}
+                            >
+                              追切:{horse.training_rank}
+                            </span>
+                          )}
+                          {horse.rotation_label && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                horse.rotation_label.includes('叩き2走目') ||
+                                horse.rotation_label.includes('叩き3走目')
+                                  ? 'bg-cyan-950/90 text-cyan-200 border-cyan-500'
+                                  : horse.rotation_label.includes('⚠️')
+                                    ? 'bg-red-950/80 text-red-200 border-red-600'
+                                    : 'bg-gray-800 text-gray-300 border-gray-600'
+                              }`}
+                            >
+                              {horse.rotation_label}
+                            </span>
+                          )}
+                          {horse.pedigree_label && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border border-purple-700/70 bg-purple-950/60 text-purple-200">
+                              {horse.pedigree_label}
+                            </span>
+                          )}
                           {horse.is_jiriki_time_warn ? (
                             <span className="bg-amber-900/80 text-amber-200 border border-amber-500 text-[10px] font-extrabold px-1.5 py-0.5 rounded">
                               ⚠️ 地力上位・持ち時計注意 ({horse.time_limit_mult}倍)
