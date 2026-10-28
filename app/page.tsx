@@ -162,6 +162,16 @@ interface AxisDefensePlan {
   reverseCount: number;
 }
 
+interface HorseMarksSummary {
+  markMap: Record<number, '◎' | '〇' | '▲' | '☆' | '△'>;
+  honmei: DiagnosisResult | null;
+  taikou: DiagnosisResult | null;
+  tanana: DiagnosisResult | null;
+  tokuchu: DiagnosisResult | null;
+  renshita: DiagnosisResult[];
+  postText: string;
+}
+
 interface RaceResult {
   umaban: number;
   bamei: string;
@@ -268,8 +278,138 @@ function getHorseSvgColors(umaban: number): { bg: string; text: string; border: 
   return colors[(umaban - 1) % 8] || { bg: '#6b7280', text: '#ffffff', border: '#374151' };
 }
 
+function getMarkBadgeStyle(mark?: '◎' | '〇' | '▲' | '☆' | '△'): string {
+  switch (mark) {
+    case '◎':
+      return 'bg-red-600 text-yellow-200 border-yellow-400 shadow-[0_0_8px_rgba(220,38,38,0.8)]';
+    case '〇':
+      return 'bg-blue-600 text-white border-blue-300';
+    case '▲':
+      return 'bg-emerald-600 text-white border-emerald-300';
+    case '☆':
+      return 'bg-pink-600 text-yellow-200 border-pink-300';
+    case '△':
+      return 'bg-gray-700 text-gray-100 border-gray-400';
+    default:
+      return '';
+  }
+}
+
 /**
- * ★アプローチ⑤: 軸信頼度ジャッジ ＆ 軸飛び（タテ目）防御BOX・逆転フォーメーション自動構築関数
+ * 印（◎〇▲☆△）の自動割り当て ＆ Xポスト用テキスト（馬名なし・馬番のみ）生成関数
+ */
+function buildHorseMarksAndPostText(
+  diagnosis: DiagnosisResult[] | null,
+  tickets: BettingTickets | null,
+  raceName: string,
+  placeName: string
+): HorseMarksSummary | null {
+  if (!diagnosis || diagnosis.length === 0 || !tickets) return null;
+
+  const markMap: Record<number, '◎' | '〇' | '▲' | '☆' | '△'> = {};
+
+  const axisGroup = tickets.formation_groups.axis_1st[0];
+  const honmei =
+    diagnosis.find((d) => d.umaban === axisGroup?.umaban) ||
+    [...diagnosis].sort((a, b) => b.shisu - a.shisu)[0] ||
+    null;
+
+  if (honmei) {
+    markMap[honmei.umaban] = '◎';
+  }
+
+  // 相手候補プール（2列目本線 ＋ 3列目救済馬）
+  const targetUmabans: number[] = [];
+  for (const m of tickets.formation_groups.main_2nd) {
+    if (m.umaban !== honmei?.umaban && !targetUmabans.includes(m.umaban)) {
+      targetUmabans.push(m.umaban);
+    }
+  }
+  for (const s of tickets.formation_groups.saver_3rd) {
+    if (s.umaban !== honmei?.umaban && !targetUmabans.includes(s.umaban)) {
+      targetUmabans.push(s.umaban);
+    }
+  }
+
+  const targetPool: DiagnosisResult[] = targetUmabans
+    .map((u) => diagnosis.find((d) => d.umaban === u))
+    .filter((d): d is DiagnosisResult => Boolean(d));
+
+  // 〇（対抗）：相手本線の1番手
+  const taikou = targetPool.length >= 1 ? targetPool[0] : null;
+  if (taikou) {
+    markMap[taikou.umaban] = '〇';
+  }
+
+  // ▲（単穴）：相手本線の2番手
+  const tanana = targetPool.length >= 2 ? targetPool[1] : null;
+  if (tanana) {
+    markMap[tanana.umaban] = '▲';
+  }
+
+  // ☆（特注）：残りの相手候補の中で「妙味指数（myoumi）」が最も高い穴馬
+  const remainingPool = targetPool.slice(2);
+  let tokuchu: DiagnosisResult | null = null;
+  if (remainingPool.length > 0) {
+    tokuchu = [...remainingPool].sort((a, b) => b.myoumi - a.myoumi || b.shisu - a.shisu)[0];
+    markMap[tokuchu.umaban] = '☆';
+  }
+
+  // △（連下）：残りの相手馬すべて
+  const renshita: DiagnosisResult[] = [];
+  for (const h of remainingPool) {
+    if (h.umaban !== tokuchu?.umaban) {
+      markMap[h.umaban] = '△';
+      renshita.push(h);
+    }
+  }
+
+  // レースタイトルの整形
+  const cleanTitle = (raceName || '本日のレース')
+    .replace(/出馬表.*$/, '')
+    .replace(/\(.*?\)/g, '')
+    .trim();
+  const headerTitle = placeName ? `${placeName} ${cleanTitle}` : cleanTitle;
+  const hashtagRace = cleanTitle.replace(/\s+/g, '');
+
+  // Xポスト文面（馬名なし・馬番のみ）
+  const lines: string[] = [];
+  lines.push(`【${headerTitle}】AI予想🎯`);
+  if (honmei) lines.push(`◎ ${honmei.umaban}`);
+  if (taikou) lines.push(`〇 ${taikou.umaban}`);
+  if (tanana) lines.push(`▲ ${tanana.umaban}`);
+  if (tokuchu) lines.push(`☆ ${tokuchu.umaban}`);
+  if (renshita.length > 0) {
+    lines.push(`△ ${renshita.map((r) => r.umaban).join(', ')}`);
+  }
+
+  lines.push('');
+  lines.push('🎫推奨買い目');
+  lines.push(`複勝: ${tickets.fukusho.picks.map((p) => p.umaban).join(', ')}`);
+  lines.push(
+    `ワイド: ${tickets.wide.axis} - ${tickets.wide.targets.join(', ')} (${tickets.wide.count}点)`
+  );
+  lines.push(
+    `3連複F: ${tickets.sanrenpuku_formation.row1.join(',')} - ${tickets.sanrenpuku_formation.row2.join(',')} - ${tickets.sanrenpuku_formation.row3.join(',')} (${tickets.sanrenpuku_formation.count}点)`
+  );
+  lines.push(
+    `3連単F: ${tickets.sanrentan_formation.first.join(',')} → ${tickets.sanrentan_formation.second.join(',')} → ${tickets.sanrentan_formation.third.join(',')} (${tickets.sanrentan_formation.count}点)`
+  );
+  lines.push(`#競馬予想 ${hashtagRace ? `#${hashtagRace}` : '#AI競馬'}`);
+
+  return {
+    markMap,
+    honmei,
+    taikou,
+    tanana,
+    tokuchu,
+    renshita,
+    postText: lines.join('\n'),
+  };
+}
+
+/**
+ * アプローチ⑤: 軸信頼度ジャッジ ＆ 軸飛び（タテ目）防御BOX・逆転フォーメーション自動構築関数
  */
 function buildAxisDefensePlan(
   diagnosis: DiagnosisResult[] | null,
@@ -288,13 +428,11 @@ function buildAxisDefensePlan(
 
   const shisuGap = Number((axisHorse.shisu - secondHorse.shisu).toFixed(1));
 
-  // 波乱・タテ目リスク判定
   let level: 'HIGH' | 'MEDIUM' | 'RISK' = 'HIGH';
   let badgeText = '👑 軸信頼度: S（鉄板1着固定推奨）';
   let headline = `${axisHorse.umaban}番 ${axisHorse.bamei} の1着固定が本線（2位と+${shisuGap}pt差）`;
   let reason = `『①素の地力(${axisHorse.stage1_rank}位)』と『②最終指数(1位)』がともにトップクラスで安定しており、1着固定フォーメーションが最も資金効率に優れます。`;
 
-  // 1番人気が過剰人気で指数上位から落ちている、または1着軸が地力3位以下、または指数差が極小の場合
   const fav1IsVulnerable =
     fav1Horse.odds <= 2.8 && (fav1Horse.stage2_rank >= 3 || fav1Horse.stage1_rank >= 3);
   const axisNotPureTop = axisHorse.stage1_rank >= 3 || shisuGap < 1.8;
@@ -316,7 +454,6 @@ function buildAxisDefensePlan(
     reason = `2位馬との指数差は+${shisuGap}pt（地力1位は${byStage1[0].umaban}番${byStage1[0].bamei}）です。3連単1着固定をメインにしつつ、念のため『⑧タテ目保険BOX』を少額押さえると取りこぼしを防げます。`;
   }
 
-  // ⑧ タテ目保険（軸抜き相手上位＋地力上位の4〜5頭 3連複BOX）の構築
   const candidatePool: DiagnosisResult[] = [];
   const main2ndUmabans = tickets.formation_groups.main_2nd.map((m) => m.umaban);
   const saver3rdUmabans = tickets.formation_groups.saver_3rd.map((s) => s.umaban);
@@ -350,7 +487,6 @@ function buildAxisDefensePlan(
     }
   }
 
-  // ⑨ 頭逆転ケア（1着: 2列目本線上位2頭 ➔ 2着: 1着軸 ➔ 3着: 相手本線＋地力救済）
   const reverseFirst = main2ndUmabans.slice(0, 2);
   const reverseSecond = [axisHorse.umaban];
   const reverseThird = Array.from(new Set([...main2ndUmabans, ...saver3rdUmabans])).slice(0, 6);
@@ -436,6 +572,9 @@ export default function Home() {
   const [activeStageView, setActiveStageView] = useState<'STAGE1' | 'STAGE2'>('STAGE2');
   const [isDiagnosing, setIsDiagnosing] = useState(false);
 
+  const [xPostText, setXPostText] = useState('');
+  const [copiedFlag, setCopiedFlag] = useState(false);
+
   const [results, setResults] = useState<RaceResult[] | null>(null);
   const [raceInfo, setRaceInfo] = useState<{
     req_up: number;
@@ -462,6 +601,34 @@ export default function Home() {
       }
     }
   }, [isRacing, simRunId]);
+
+  const marksSummary = buildHorseMarksAndPostText(
+    diagnosisResults,
+    bettingTickets,
+    targetRaceName,
+    targetPlace
+  );
+
+  useEffect(() => {
+    if (marksSummary?.postText) {
+      setXPostText(marksSummary.postText);
+    }
+  }, [marksSummary?.postText]);
+
+  const handleCopyPostText = async () => {
+    try {
+      await navigator.clipboard.writeText(xPostText);
+      setCopiedFlag(true);
+      setTimeout(() => setCopiedFlag(false), 2000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleShareToX = () => {
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(xPostText)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
   const handleFetchRace = async () => {
     if (!raceId) {
@@ -691,10 +858,10 @@ export default function Home() {
     <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl md:text-3xl font-bold mb-2 text-center text-red-500">
-          PRO仕様 競馬本格シミュレーター (完成度90%到達版)
+          PRO仕様 競馬本格シミュレーター (完成度90%＋𝕏共有搭載版)
         </h1>
         <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
-          [ ①DB×5走柱統合 × ②重賞着差・上がり順位 × ③血統距離適性 × ④ローテ・追切 × ⑤軸飛びタテ目防御 ]
+          [ ①DB×5走柱統合 × ②重賞着差・上がり順位 × ③血統距離適性 × ④ローテ・追切 × ⑤印自動付与＆𝕏ポスト ]
         </p>
 
         {/* STEP 1 */}
@@ -1025,7 +1192,6 @@ export default function Home() {
                       <span className="text-[10px] text-gray-500">)</span>
                     </div>
 
-                    {/* 追切ランク ワンタップ補正プルダウン */}
                     <select
                       value={horse.training_rank || 'B'}
                       onChange={(e) => handleChange(index, 'training_rank', e.target.value)}
@@ -1071,7 +1237,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* 2段階診断実行ボタン群 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6">
             <button
               onClick={() => runDiagnosisWithMode('STAGE1')}
@@ -1150,14 +1315,106 @@ export default function Home() {
               </p>
             </div>
 
-            {/* 🎫 推奨馬券パネル（アプローチ⑤：軸信頼度ジャッジ＆タテ目BOX搭載） */}
+            {/* 🎫 推奨馬券パネル */}
             {bettingTickets && (
               <div className="mb-8 bg-gray-950 border-2 border-indigo-500/70 rounded-xl p-4 md:p-6 shadow-xl">
                 <h3 className="text-base md:text-lg font-extrabold text-yellow-400 mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
                   🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 軸飛び防御買い目
                 </h3>
 
-                {/* ★アプローチ⑤: 軸信頼度ジャッジバナー */}
+                {/* ★新機能: AI予想印（◎〇▲☆△）一覧 ＆ 𝕏ワンタップ共有パネル */}
+                {marksSummary && (
+                  <div className="mb-6 bg-gray-900 border border-sky-500/60 rounded-xl p-4 shadow-lg">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-gray-800 pb-2.5 mb-3">
+                      <span className="text-sm md:text-base font-extrabold text-sky-400">
+                        📌 AI決定印（◎本命 / 〇対抗 / ▲単穴 / ☆妙味特注 / △連下）＆ 𝕏ポスト出力
+                      </span>
+                      <span className="text-[11px] text-gray-400">
+                        ※ポスト文面は馬番のみのコンパクト仕様（下の枠内で直接編集も可能です）
+                      </span>
+                    </div>
+
+                    {/* 画面確認用の印一覧（馬番＋馬名） */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4 text-xs">
+                      {marksSummary.honmei && (
+                        <div className="bg-red-950/50 border border-red-500/70 rounded-lg p-2.5">
+                          <span className="inline-block bg-red-600 text-yellow-200 font-black px-1.5 py-0.5 rounded text-xs mr-1.5">
+                            ◎ 本命
+                          </span>
+                          <span className="font-extrabold text-white">
+                            {marksSummary.honmei.umaban}番 {marksSummary.honmei.bamei}
+                          </span>
+                        </div>
+                      )}
+                      {marksSummary.taikou && (
+                        <div className="bg-blue-950/50 border border-blue-500/70 rounded-lg p-2.5">
+                          <span className="inline-block bg-blue-600 text-white font-black px-1.5 py-0.5 rounded text-xs mr-1.5">
+                            〇 対抗
+                          </span>
+                          <span className="font-extrabold text-white">
+                            {marksSummary.taikou.umaban}番 {marksSummary.taikou.bamei}
+                          </span>
+                        </div>
+                      )}
+                      {marksSummary.tanana && (
+                        <div className="bg-emerald-950/50 border border-emerald-500/70 rounded-lg p-2.5">
+                          <span className="inline-block bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded text-xs mr-1.5">
+                            ▲ 単穴
+                          </span>
+                          <span className="font-extrabold text-white">
+                            {marksSummary.tanana.umaban}番 {marksSummary.tanana.bamei}
+                          </span>
+                        </div>
+                      )}
+                      {marksSummary.tokuchu && (
+                        <div className="bg-pink-950/50 border border-pink-500/70 rounded-lg p-2.5">
+                          <span className="inline-block bg-pink-600 text-yellow-200 font-black px-1.5 py-0.5 rounded text-xs mr-1.5">
+                            ☆ 特注
+                          </span>
+                          <span className="font-extrabold text-white">
+                            {marksSummary.tokuchu.umaban}番 {marksSummary.tokuchu.bamei}
+                          </span>
+                        </div>
+                      )}
+                      {marksSummary.renshita.length > 0 && (
+                        <div className="col-span-2 md:col-span-1 bg-gray-800/80 border border-gray-600 rounded-lg p-2.5">
+                          <span className="inline-block bg-gray-600 text-white font-bold px-1.5 py-0.5 rounded text-xs mr-1.5">
+                            △ 連下
+                          </span>
+                          <span className="font-bold text-gray-200">
+                            {marksSummary.renshita.map((r) => `${r.umaban}番`).join(', ')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Xポスト用テキストエリア（馬名なし）＆ 投稿ボタン */}
+                    <div className="flex flex-col md:flex-row gap-3 items-stretch">
+                      <textarea
+                        value={xPostText}
+                        onChange={(e) => setXPostText(e.target.value)}
+                        rows={8}
+                        className="flex-grow bg-gray-950 text-gray-100 font-mono text-xs p-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-sky-500 leading-relaxed"
+                      />
+                      <div className="flex flex-col justify-between gap-2 md:w-56">
+                        <button
+                          onClick={handleShareToX}
+                          className="w-full flex-grow bg-black hover:bg-gray-900 text-white font-extrabold py-3 px-4 rounded-lg border-2 border-gray-500 shadow-lg flex items-center justify-center gap-2 transition text-sm"
+                        >
+                          <span className="text-lg">𝕏</span> で予想をポストする
+                        </button>
+                        <button
+                          onClick={handleCopyPostText}
+                          className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 px-4 rounded-lg border border-slate-500 text-xs transition"
+                        >
+                          {copiedFlag ? '✅ コピーしました！' : '📋 ポスト文面をコピー'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* アプローチ⑤: 軸信頼度ジャッジバナー */}
                 {axisDefensePlan && (
                   <div
                     className={`mb-5 p-3.5 md:p-4 rounded-xl border-2 ${
@@ -1435,7 +1692,7 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* ★アプローチ⑤: ⑧タテ目保険3連複BOX ＆ ⑨頭逆転フォーメーション */}
+                  {/* アプローチ⑤: ⑧タテ目保険3連複BOX ＆ ⑨頭逆転フォーメーション */}
                   {axisDefensePlan && (
                     <div className="md:col-span-2 bg-gradient-to-r from-rose-950/70 via-amber-950/50 to-gray-900 border-2 border-rose-500/80 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
@@ -1449,7 +1706,9 @@ export default function Home() {
                           <div className="font-mono font-bold text-white">
                             BOX対象 ({axisDefensePlan.tatemeBoxTargets.length}頭):{' '}
                             <span className="text-rose-300 font-extrabold">
-                              {axisDefensePlan.tatemeBoxTargets.map((t) => `${t.umaban}番`).join(', ')}
+                              {axisDefensePlan.tatemeBoxTargets
+                                .map((t) => `${t.umaban}番`)
+                                .join(', ')}
                             </span>
                           </div>
                           <div className="text-[11px] text-gray-300">
@@ -1507,10 +1766,11 @@ export default function Home() {
               </div>
             )}
 
-            {/* 各馬の2段階指数カード一覧 */}
+            {/* 各馬の2段階指数カード一覧（印バッジ付き） */}
             <div className="grid md:grid-cols-2 gap-4">
               {displayedDiagnosis.map((horse) => {
                 const matchLabel = getScenarioMatchLabel(horse);
+                const mark = marksSummary?.markMap[horse.umaban];
                 const roleBadgeColor =
                   horse.role_code === 'AXIS_1ST'
                     ? 'bg-yellow-500 text-gray-950'
@@ -1557,6 +1817,13 @@ export default function Home() {
                           >
                             {horse.umaban}
                           </div>
+                          {mark && (
+                            <span
+                              className={`w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-black text-sm md:text-base rounded-md border ${getMarkBadgeStyle(mark)}`}
+                            >
+                              {mark}
+                            </span>
+                          )}
                           <span className="text-base md:text-lg font-bold">{horse.bamei}</span>
                           {horse.odds > 0 && (
                             <span className="text-xs font-mono text-yellow-400 font-bold">
