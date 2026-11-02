@@ -147,28 +147,24 @@ interface BettingTickets {
   };
 }
 
+interface PatternTicketItem {
+  id: string;
+  title: string;
+  badge: string;
+  structureText: string;
+  subNote: string;
+  combos: string[];
+  count: number;
+}
+
 interface AxisDefensePlan {
   level: 'HIGH' | 'MEDIUM' | 'RISK';
   badgeText: string;
   headline: string;
   reason: string;
-  tatemeBoxTargets: { umaban: number; bamei: string; shisu: number; odds: number }[];
-  tatemeBoxCombos: string[];
-  tatemeBoxCount: number;
-  reverseFirst: number[];
-  reverseSecond: number[];
-  reverseThird: number[];
-  reverseCombos: string[];
-  reverseCount: number;
-  anaFormRow1: number[];
-  anaFormRow2: number[];
-  anaFormRow3: number[];
-  anaFormCombos: string[];
-  anaFormCount: number;
-  anaWideAxes: number[];
-  anaWideTargets: number[];
-  anaWideCombos: string[];
-  anaWideCount: number;
+  widePatterns: PatternTicketItem[];
+  sanrenpukuPatterns: PatternTicketItem[];
+  sanrentanPatterns: PatternTicketItem[];
 }
 
 interface HorseMarksSummary {
@@ -305,6 +301,61 @@ function getMarkBadgeStyle(mark?: '◎' | '〇' | '▲' | '☆' | '△'): string
 }
 
 /**
+ * ワイド・3連複・3連単の組み合わせ生成ヘルパー関数
+ */
+function generateWideCombos(axes: number[], targets: number[]): string[] {
+  const set = new Set<string>();
+  const combos: string[] = [];
+  for (const a of axes) {
+    for (const b of targets) {
+      if (a !== b) {
+        const pair = [a, b].sort((x, y) => x - y);
+        const key = `${pair[0]} - ${pair[1]}`;
+        if (!set.has(key)) {
+          set.add(key);
+          combos.push(key);
+        }
+      }
+    }
+  }
+  return combos;
+}
+
+function generateSanrenpukuFormCombos(row1: number[], row2: number[], row3: number[]): string[] {
+  const set = new Set<string>();
+  for (const a of row1) {
+    for (const b of row2) {
+      for (const c of row3) {
+        if (a !== b && b !== c && a !== c) {
+          const sorted = [a, b, c].sort((x, y) => x - y);
+          set.add(`${sorted[0]} - ${sorted[1]} - ${sorted[2]}`);
+        }
+      }
+    }
+  }
+  return Array.from(set).sort();
+}
+
+function generateSanrentanFormCombos(first: number[], second: number[], third: number[]): string[] {
+  const combos: string[] = [];
+  const seen = new Set<string>();
+  for (const f of first) {
+    for (const s of second) {
+      for (const t of third) {
+        if (f !== s && s !== t && f !== t) {
+          const key = `${f} → ${s} → ${t}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            combos.push(key);
+          }
+        }
+      }
+    }
+  }
+  return combos;
+}
+
+/**
  * 印（◎〇▲☆△）の自動割り当て ＆ Xポスト用テキスト（馬名なし・馬番のみ）生成関数
  */
 function buildHorseMarksAndPostText(
@@ -411,7 +462,7 @@ function buildHorseMarksAndPostText(
 }
 
 /**
- * 軸信頼度ジャッジ ＆ 対抗・地力上位・穴から狙う拡張買い目（⑧・⑨・⑩）構築関数
+ * 軸信頼度ジャッジ ＆ ワイド(2・3列目)・3連複・3連単 各4パターン構築関数
  */
 function buildAxisDefensePlan(
   diagnosis: DiagnosisResult[] | null,
@@ -431,9 +482,9 @@ function buildAxisDefensePlan(
   const shisuGap = Number((axisHorse.shisu - secondHorse.shisu).toFixed(1));
 
   let level: 'HIGH' | 'MEDIUM' | 'RISK' = 'HIGH';
-  let badgeText = '👑 軸信頼度: S（鉄板1着固定推奨）';
+  let badgeText = '👑 軸信頼度: S（王道パターン①中心推奨）';
   let headline = `${axisHorse.umaban}番 ${axisHorse.bamei} の1着固定が本線（2位と+${shisuGap}pt差）`;
-  let reason = `『①素の地力(${axisHorse.stage1_rank}位)』と『②最終指数(1位)』がともにトップクラスで安定。本線フォーメーションを主軸にしつつ、高配当狙いなら下の『⑨・⑩対抗＆穴攻め馬券』を少額併用。`;
+  let reason = `『①素の地力(${axisHorse.stage1_rank}位)』と『②最終指数(1位)』がともにトップクラスで安定。各券種の『パターン①・②』を主軸にしつつ、高配当狙いなら2・3列目ワイドを併用。`;
 
   const fav1IsVulnerable =
     fav1Horse.odds <= 2.8 && (fav1Horse.stage2_rank >= 3 || fav1Horse.stage1_rank >= 3);
@@ -441,199 +492,267 @@ function buildAxisDefensePlan(
 
   if (fav1IsVulnerable || (axisHorse.odds <= 2.5 && axisHorse.stage1_rank >= 2) || shisuGap < 1.5) {
     level = 'RISK';
-    badgeText = '🚨 軸信頼度: B（波乱・イン詰まり・タテ目厳重警戒）';
+    badgeText = '🚨 軸信頼度: B（波乱・2列目×3列目パターン推奨）';
     if (fav1IsVulnerable && fav1Horse.umaban !== axisHorse.umaban) {
-      headline = `⚠️ 1番人気(${fav1Horse.umaban}番${fav1Horse.bamei}:${fav1Horse.odds}倍)に波乱リスク！対抗・地力上位・穴攻め推奨`;
-      reason = `単勝${fav1Horse.odds}倍の1番人気${fav1Horse.bamei}が素の地力${fav1Horse.stage1_rank}位・最終${fav1Horse.stage2_rank}位に留まっています。人気馬の馬群包まれや、外枠の地力上位馬・妙味穴馬が突き抜ける『⑨・⑩対抗＆穴から狙う馬券』の期待値が極めて高いレースです。`;
+      headline = `⚠️ 1番人気(${fav1Horse.umaban}番${fav1Horse.bamei}:${fav1Horse.odds}倍)に波乱リスク！2・3列目中心のパターン②〜④推奨`;
+      reason = `単勝${fav1Horse.odds}倍の1番人気${fav1Horse.bamei}が素の地力${fav1Horse.stage1_rank}位・最終${fav1Horse.stage2_rank}位に留まっています。2列目×3列目ワイドや、3連複・3連単の『パターン②〜④（対抗・地力救済・穴頭）』の期待値が極めて高いレースです。`;
     } else {
-      headline = `⚠️ 1位(${axisHorse.umaban}番)と2位(${secondHorse.umaban}番)の指数差が${shisuGap}ptと僅差！対抗・地力馬の頭逆転＆穴攻め推奨`;
-      reason = `1着軸(${axisHorse.bamei})が素の地力${axisHorse.stage1_rank}位、または上位陣の能力差が僅少です。内枠包まれ等で軸が飛ぶケースも想定し、『⑨地力上位・対抗の頭逆転3連単』と『⑩対抗・穴から狙う3連複F』の併用を強く推奨します。`;
+      headline = `⚠️ 1位(${axisHorse.umaban}番)と2位(${secondHorse.umaban}番)の指数差が${shisuGap}ptと僅差！逆転＆2・3列目勝負推奨`;
+      reason = `1着軸(${axisHorse.bamei})が素の地力${axisHorse.stage1_rank}位、または上位陣の能力差が僅少です。内枠包まれ等で軸が飛ぶケースも想定し、2・3列目ワイドや3連単『パターン③・④（2列目・3列目頭固定）』の併用を強く推奨します。`;
     }
   } else if (axisNotPureTop || shisuGap < 3.5) {
     level = 'MEDIUM';
-    badgeText = '⚡ 軸信頼度: A（対抗・地力上位の頭逆転＆穴ケア推奨）';
-    headline = `本線は${axisHorse.umaban}番${axisHorse.bamei}も、対抗(${secondHorse.umaban}番)や地力上位馬の突き抜け・ヒモ荒れに注意`;
-    reason = `2位馬との指数差は+${shisuGap}pt（地力1位は${byStage1[0].umaban}番${byStage1[0].bamei}）です。3連単1着固定をメインにしつつ、『⑨頭逆転3連単』や『⑩対抗・穴軸フォーメーション』を押さえると高配当の取りこぼしを防げます。`;
+    badgeText = '⚡ 軸信頼度: A（王道＋2・3列目逆転ケア推奨）';
+    headline = `本線は${axisHorse.umaban}番${axisHorse.bamei}も、2列目(${secondHorse.umaban}番)や3列目地力馬の突き抜けに注意`;
+    reason = `2位馬との指数差は+${shisuGap}pt（地力1位は${byStage1[0].umaban}番${byStage1[0].bamei}）です。パターン①をメインにしつつ、2・3列目ワイドやパターン③・④を押さえると高配当の取りこぼしを防げます。`;
   }
 
+  // 2列目・3列目の馬番リスト整理
+  const row1Umabans = [axisHorse.umaban];
   const main2ndUmabans = tickets.formation_groups.main_2nd.map((m) => m.umaban);
-  const saver3rdUmabans = tickets.formation_groups.saver_3rd.map((s) => s.umaban);
+  let saver3rdUmabans = tickets.formation_groups.saver_3rd.map((s) => s.umaban);
 
-  const candidatePool: DiagnosisResult[] = [];
-  for (const u of [...main2ndUmabans, ...saver3rdUmabans]) {
-    const found = diagnosis.find((d) => d.umaban === u);
-    if (found && !candidatePool.some((c) => c.umaban === found.umaban)) {
-      candidatePool.push(found);
-    }
-  }
-  for (const d of byStage2) {
-    if (d.umaban !== axisHorse.umaban && !candidatePool.some((c) => c.umaban === d.umaban)) {
-      if ((d.time_limit_mult ?? 1.0) > 0.88 && (d.condition_mult ?? 1.0) > 0.88) {
-        candidatePool.push(d);
-      }
-    }
-    if (candidatePool.length >= 6) break;
-  }
-
-  // ⑧ タテ目保険 3連複BOX（5頭）
-  const boxHorses = [...candidatePool]
-    .sort(
-      (a, b) =>
-        b.shisu +
-        b.stage1_shisu * 0.55 +
-        (b.myoumi >= 58 ? 2.5 : 0) -
-        (a.shisu + a.stage1_shisu * 0.55 + (a.myoumi >= 58 ? 2.5 : 0))
-    )
-    .slice(0, 5);
-
-  const boxUmabans = boxHorses.map((h) => h.umaban).sort((a, b) => a - b);
-  const tatemeBoxCombos: string[] = [];
-  for (let i = 0; i < boxUmabans.length; i++) {
-    for (let j = i + 1; j < boxUmabans.length; j++) {
-      for (let k = j + 1; k < boxUmabans.length; k++) {
-        tatemeBoxCombos.push(`${boxUmabans[i]} - ${boxUmabans[j]} - ${boxUmabans[k]}`);
-      }
-    }
-  }
-
-  // ★地力TOP3のバイアス救済馬（例: ⑰ダノンデサイルのように素の地力3位以内だが外枠等で2列目から漏れた実力馬）
-  const jirikiTopRescuedUmabans = byStage1
-    .filter(
-      (d) =>
+  // もし3列目が少ない場合はStage2上位から補完
+  if (saver3rdUmabans.length < 2) {
+    for (const d of byStage2) {
+      if (
         d.umaban !== axisHorse.umaban &&
-        d.stage1_rank <= 3 &&
-        (d.time_limit_mult ?? 1.0) > 0.88 &&
-        (d.condition_mult ?? 1.0) > 0.88
-    )
+        !main2ndUmabans.includes(d.umaban) &&
+        !saver3rdUmabans.includes(d.umaban) &&
+        (d.time_limit_mult ?? 1.0) > 0.88
+      ) {
+        saver3rdUmabans.push(d.umaban);
+      }
+      if (saver3rdUmabans.length >= 3) break;
+    }
+  }
+
+  const allRow2Row3 = Array.from(new Set([...main2ndUmabans, ...saver3rdUmabans]));
+  const allRow1Row2Row3 = Array.from(new Set([axisHorse.umaban, ...allRow2Row3]));
+
+  // 3列目（または2・3列目）の中の「地力TOP3救済馬」と「妙味特注馬(☆)」を特定
+  const jirikiTopInRow23 = byStage1
+    .filter((d) => d.umaban !== axisHorse.umaban && allRow2Row3.includes(d.umaban))
+    .slice(0, 2)
     .map((d) => d.umaban);
 
-  // ★特注穴・妙味上位馬（例: ⑩ネブラディスク・③レガレイラのように妙味指数が高い相手候補）
-  const highMyoumiAnaUmabans = [...candidatePool]
-    .filter((d) => d.myoumi >= 54.0 || d.odds >= 8.0)
-    .sort((a, b) => b.myoumi - a.myoumi || b.shisu - a.shisu)
-    .slice(0, 3)
-    .map((d) => d.umaban);
+  const saverJirikiAxes = saver3rdUmabans.filter((u) => {
+    const h = diagnosis.find((d) => d.umaban === u);
+    return h && h.stage1_rank <= 4;
+  });
+  const row3JirikiAxis =
+    saverJirikiAxes.length > 0
+      ? saverJirikiAxes.slice(0, 2)
+      : jirikiTopInRow23.slice(0, 2).length > 0
+        ? jirikiTopInRow23.slice(0, 2)
+        : saver3rdUmabans.slice(0, 1);
 
-  // ⑨ 【対抗・地力上位 頭逆転ケア】3連単フォーメーション
-  // 1着: 2列目本線上位2頭 ＋ 地力TOP3救済馬（ダノンデサイル等）
-  const reverseFirst = Array.from(
-    new Set([...main2ndUmabans.slice(0, 2), ...jirikiTopRescuedUmabans])
-  ).slice(0, 3);
+  const myoumiSortedRow23 = allRow2Row3
+    .map((u) => diagnosis.find((d) => d.umaban === u))
+    .filter((d): d is DiagnosisResult => Boolean(d))
+    .sort((a, b) => b.myoumi - a.myoumi || b.shisu - a.shisu);
 
-  // 2着: 本命軸(◎) ＋ 2列目本線 ＋ 妙味特注穴（本命が飛んで「地力馬→穴馬」になる決着もカバー）
-  const reverseSecond = Array.from(
-    new Set([
-      axisHorse.umaban,
-      ...main2ndUmabans.slice(0, 2),
-      ...highMyoumiAnaUmabans.slice(0, 2),
-    ])
+  const tokuchuAxis =
+    myoumiSortedRow23.find((d) => saver3rdUmabans.includes(d.umaban))?.umaban ||
+    myoumiSortedRow23[0]?.umaban ||
+    main2ndUmabans[0];
+
+  // ===================================================================
+  // A. ワイド（2列目 × 3列目で買う 4パターン）
+  // ===================================================================
+  // パターン①: 2列目本線 ➔ 3列目（地力救済・穴）クロス流し
+  const wide1Combos = generateWideCombos(
+    main2ndUmabans,
+    saver3rdUmabans.length > 0 ? saver3rdUmabans : main2ndUmabans
+  );
+  // パターン②: 3列目（地力上位救済馬）軸 ➔ 2列目＋3列目流し
+  const wide2Targets = allRow2Row3.filter((u) => !row3JirikiAxis.includes(u)).slice(0, 5);
+  const wide2Combos = generateWideCombos(row3JirikiAxis, wide2Targets);
+  // パターン③: 妙味特注穴(☆)軸 ➔ 2列目＋3列目上位流し
+  const wide3Targets = allRow2Row3.filter((u) => u !== tokuchuAxis).slice(0, 5);
+  const wide3Combos = generateWideCombos([tokuchuAxis], wide3Targets);
+  // パターン④: 2列目上位2頭 ＋ 3列目上位2頭 のタテ目4頭BOX（6点）
+  const wide4BoxPool = Array.from(
+    new Set([...main2ndUmabans.slice(0, 2), ...saver3rdUmabans.slice(0, 2), ...allRow2Row3])
   ).slice(0, 4);
+  const wide4Combos = generateWideCombos(wide4BoxPool, wide4BoxPool);
 
-  // 3着: 本命軸(◎) ＋ 相手本線 ＋ 3列目救済馬
-  const reverseThird = Array.from(
-    new Set([axisHorse.umaban, ...main2ndUmabans, ...saver3rdUmabans])
-  ).slice(0, 6);
+  const widePatterns: PatternTicketItem[] = [
+    {
+      id: 'W1',
+      title: 'パターン①【王道タテ目】2列目本線 ➔ 3列目 クロス流し',
+      badge: '2列目×3列目本線',
+      structureText: `2列目(${main2ndUmabans.join(', ')}) ➔ 3列目(${saver3rdUmabans.join(', ')})`,
+      subNote: '1着軸(◎)が飛んでも、2列目本線と3列目救済馬のペアで確実に拾う基本形',
+      combos: wide1Combos,
+      count: wide1Combos.length,
+    },
+    {
+      id: 'W2',
+      title: 'パターン②【地力逆襲】3列目(地力上位)軸 ➔ 2・3列目流し',
+      badge: '地力救済軸',
+      structureText: `軸: ${row3JirikiAxis.join(', ')}番 ➔ 相手: ${wide2Targets.join(', ')}番`,
+      subNote: '外枠等で3列目に回った「素の地力上位馬(ダノンデサイル型)」から2・3列目へ流す勝負手',
+      combos: wide2Combos,
+      count: wide2Combos.length,
+    },
+    {
+      id: 'W3',
+      title: 'パターン③【一撃回収】特注穴(☆妙味トップ)軸 ➔ 2・3列目流し',
+      badge: '妙味特注軸',
+      structureText: `特注軸: ${tokuchuAxis}番 ➔ 相手: ${wide3Targets.join(', ')}番`,
+      subNote: '妙味指数トップの伏兵(ネブラディスク型)から2・3列目の実力馬へぶつける高配当ワイド',
+      combos: wide3Combos,
+      count: wide3Combos.length,
+    },
+    {
+      id: 'W4',
+      title: 'パターン④【タテ目凝縮】2列目＋3列目 厳選4頭BOX',
+      badge: '2・3列目BOX',
+      structureText: `BOX対象(4頭): ${wide4BoxPool.join(', ')}番`,
+      subNote: '2列目上位2頭＋3列目上位2頭の計4頭で組む、ダブル・トリプル的中狙いの6点BOX',
+      combos: wide4Combos,
+      count: wide4Combos.length,
+    },
+  ];
 
-  const reverseCombos: string[] = [];
-  for (const f of reverseFirst) {
-    for (const s of reverseSecond) {
-      for (const t of reverseThird) {
-        if (f !== s && s !== t && f !== t) {
-          reverseCombos.push(`${f} → ${s} → ${t}`);
-        }
-      }
-    }
-  }
+  // ===================================================================
+  // B. 3連複（戦術別 4パターン）
+  // ===================================================================
+  // パターン①: 王道フォーメーション（1列目 ー 2列目 ー 2・3列目）
+  const puku1Combos = tickets.sanrenpuku_formation.combos;
 
-  // ⑩ 【新設：対抗・穴から狙う高配当】3連複フォーメーション ＆ 穴ワイド
-  // 1列目: 対抗(〇)・単穴(▲)・地力TOP3救済馬・特注穴(☆) から上位3頭（あえて1番人気/本命◎を1列目から外した攻めの軸）
-  const anaFormRow1 = Array.from(
-    new Set([
-      ...main2ndUmabans.slice(0, 2),
-      ...jirikiTopRescuedUmabans,
-      ...highMyoumiAnaUmabans.slice(0, 1),
-    ])
+  // パターン②: 2列目・3列目W軸フォーメーション（1列目: 対抗〇＋地力救済 ➔ 2列目: 2・3列目上位 ➔ 3列目: 本命◎＋全相手）
+  const puku2Row1 = Array.from(
+    new Set([main2ndUmabans[0], ...row3JirikiAxis, tokuchuAxis].filter(Boolean))
   ).slice(0, 3);
-
-  // 2列目: 1列目 ＋ 妙味上位穴馬・地力救済馬（ネブラディスク・レガレイラ等）
-  const anaFormRow2 = Array.from(
-    new Set([...anaFormRow1, ...highMyoumiAnaUmabans, ...saver3rdUmabans.slice(0, 2)])
+  const puku2Row2 = Array.from(
+    new Set([...main2ndUmabans, ...row3JirikiAxis, tokuchuAxis].filter(Boolean))
   ).slice(0, 5);
+  const puku2Row3 = allRow1Row2Row3;
+  const puku2Combos = generateSanrenpukuFormCombos(puku2Row1, puku2Row2, puku2Row3);
 
-  // 3列目: 2列目 ＋ 本命(◎) ＋ 相手全頭（本命が3着に負けるケースも、完全に飛ぶケースも両方的中）
-  const anaFormRow3 = Array.from(
-    new Set([...anaFormRow2, axisHorse.umaban, ...main2ndUmabans, ...saver3rdUmabans])
-  ).slice(0, 7);
+  // パターン③: 2・3列目 軸抜きタテ目5頭BOX（10点）
+  const puku3BoxPool = allRow2Row3.slice(0, 5);
+  const puku3Combos = generateSanrenpukuFormCombos(puku3BoxPool, puku3BoxPool, puku3BoxPool);
 
-  const anaFormSet = new Set<string>();
-  const anaFormCombos: string[] = [];
-  for (const a of anaFormRow1) {
-    for (const b of anaFormRow2) {
-      for (const c of anaFormRow3) {
-        if (a !== b && b !== c && a !== c) {
-          const sorted = [a, b, c].sort((x, y) => x - y);
-          const key = `${sorted[0]} - ${sorted[1]} - ${sorted[2]}`;
-          if (!anaFormSet.has(key)) {
-            anaFormSet.add(key);
-            anaFormCombos.push(key);
-          }
-        }
-      }
-    }
-  }
+  // パターン④: 3列目（特注穴☆・地力救済筆頭）1頭軸 ➔ 1・2・3列目上位流し
+  const puku4Axis = [row3JirikiAxis[0] || tokuchuAxis];
+  const puku4Targets = allRow1Row2Row3.filter((u) => u !== puku4Axis[0]).slice(0, 6);
+  const puku4Combos = generateSanrenpukuFormCombos(puku4Axis, puku4Targets, puku4Targets);
 
-  // 穴ワイド（対抗・地力救済 ➔ 妙味上位穴・3列目救済）
-  const anaWideAxes = Array.from(
-    new Set([main2ndUmabans[0], ...jirikiTopRescuedUmabans].filter(Boolean))
-  ).slice(0, 2);
-  const anaWideTargets = Array.from(
-    new Set([...highMyoumiAnaUmabans, ...saver3rdUmabans])
-  )
-    .filter((u) => !anaWideAxes.includes(u))
-    .slice(0, 4);
+  const sanrenpukuPatterns: PatternTicketItem[] = [
+    {
+      id: 'P1',
+      title: 'パターン①【王道本線】1着軸(◎) ー 2列目 ー 2・3列目F',
+      badge: '本命軸・王道',
+      structureText: `${row1Umabans.join(',')} ー ${main2ndUmabans.join(',')} ー ${allRow2Row3.join(',')}`,
+      subNote: '1着軸(◎)を信頼し、2列目本線と3列目救済馬へ流す最も資金効率の良い基本形',
+      combos: puku1Combos,
+      count: puku1Combos.length,
+    },
+    {
+      id: 'P2',
+      title: 'パターン②【対抗・3列目軸】2・3列目代表 ー 2・3列目 ー 全相手F',
+      badge: '2・3列目主役',
+      structureText: `${puku2Row1.join(',')} ー ${puku2Row2.join(',')} ー ${puku2Row3.join(',')}`,
+      subNote: '2列目筆頭と3列目の地力・特注馬を1列目に据え、本命(◎)が3着でも飛んでも獲れる攻めの形',
+      combos: puku2Combos,
+      count: puku2Combos.length,
+    },
+    {
+      id: 'P3',
+      title: 'パターン③【軸飛びタテ目】2列目＋3列目上位 5頭BOX',
+      badge: '軸抜きBOX',
+      structureText: `BOX対象(5頭): ${puku3BoxPool.join(', ')}番`,
+      subNote: '1着軸(◎)が馬群に沈んだ際、2列目と3列目の実力・穴馬同士で高配当を抜く10点BOX',
+      combos: puku3Combos,
+      count: puku3Combos.length,
+    },
+    {
+      id: 'P4',
+      title: 'パターン④【3列目一撃】3列目(地力・特注筆頭) 1頭軸流し',
+      badge: '3列目1頭軸',
+      structureText: `軸: ${puku4Axis.join(',')}番 ー 相手: ${puku4Targets.join(', ')}番`,
+      subNote: '3列目の最有力馬(地力救済/特注☆)が馬券に絡めば、相手どこでも高配当になる1頭軸流し',
+      combos: puku4Combos,
+      count: puku4Combos.length,
+    },
+  ];
 
-  const anaWideSet = new Set<string>();
-  const anaWideCombos: string[] = [];
-  for (const ax of anaWideAxes) {
-    for (const tg of anaWideTargets) {
-      if (ax !== tg) {
-        const pair = [ax, tg].sort((x, y) => x - y);
-        const key = `${pair[0]} - ${pair[1]}`;
-        if (!anaWideSet.has(key)) {
-          anaWideSet.add(key);
-          anaWideCombos.push(key);
-        }
-      }
-    }
-  }
+  // ===================================================================
+  // C. 3連単（1着固定＆逆転フォーメーション 4パターン）
+  // ===================================================================
+  // パターン①: 王道・本命1着固定（1列目 → 2列目 → 2・3列目）
+  const tan1Combos = tickets.sanrentan_formation.combos;
+
+  // パターン②: 本命1着固定 × 3列目2着抜擢（ヒモ荒れ：1列目 → 3列目 → 2・3列目）
+  const tan2Second = saver3rdUmabans.length > 0 ? saver3rdUmabans : main2ndUmabans;
+  const tan2Combos = generateSanrentanFormCombos(row1Umabans, tan2Second, allRow2Row3);
+
+  // パターン③: 2列目本線 1着固定（対抗頭逆転：2列目 → 本命◎＋2・3列目上位 → 1・2・3列目）
+  const tan3First = main2ndUmabans.slice(0, 2);
+  const tan3Second = Array.from(
+    new Set([axisHorse.umaban, ...main2ndUmabans, tokuchuAxis])
+  ).slice(0, 4);
+  const tan3Third = allRow1Row2Row3.slice(0, 7);
+  const tan3Combos = generateSanrentanFormCombos(tan3First, tan3Second, tan3Third);
+
+  // パターン④: 3列目（地力TOP3救済・特注穴☆）1着固定（大波乱頭：3列目代表 → 2・3列目 → 1・2・3列目）
+  const tan4First = Array.from(new Set([...row3JirikiAxis, tokuchuAxis])).slice(0, 2);
+  const tan4Second = Array.from(
+    new Set([...main2ndUmabans, ...saver3rdUmabans.slice(0, 2), axisHorse.umaban])
+  ).slice(0, 5);
+  const tan4Third = allRow1Row2Row3.slice(0, 7);
+  const tan4Combos = generateSanrentanFormCombos(tan4First, tan4Second, tan4Third);
+
+  const sanrentanPatterns: PatternTicketItem[] = [
+    {
+      id: 'T1',
+      title: 'パターン①【王道・本命頭】1列目(◎)1着固定 ➔ 2列目 ➔ 2・3列目',
+      badge: '本命1着固定',
+      structureText: `${row1Umabans.join(',')} → ${main2ndUmabans.join(',')} → ${allRow2Row3.join(',')}`,
+      subNote: '不動の本命(◎)を1着に固定し、2着に2列目本線、3着に3列目まで広げる王道勝負馬券',
+      combos: tan1Combos,
+      count: tan1Combos.length,
+    },
+    {
+      id: 'T2',
+      title: 'パターン②【2着ヒモ荒れ】1列目(◎)1着固定 ➔ 3列目2着 ➔ 2・3列目',
+      badge: '3列目2着抜擢',
+      structureText: `${row1Umabans.join(',')} → ${tan2Second.join(',')} → ${allRow2Row3.join(',')}`,
+      subNote: '本命(◎)が勝ち、2着に3列目の地力馬・穴馬(ネブラディスク型)が突っ込む高配当1着固定',
+      combos: tan2Combos,
+      count: tan2Combos.length,
+    },
+    {
+      id: 'T3',
+      title: 'パターン③【2列目頭固定】2列目本線(〇▲)1着 ➔ 本命・相手 ➔ 全相手',
+      badge: '2列目1着固定',
+      structureText: `${tan3First.join(',')} → ${tan3Second.join(',')} → ${tan3Third.join(',')}`,
+      subNote: 'バイアス合致の2列目本線が勝ち切り、2・3着に本命や3列目が入る頭逆転フォーメーション',
+      combos: tan3Combos,
+      count: tan3Combos.length,
+    },
+    {
+      id: 'T4',
+      title: 'パターン④【3列目頭・大波乱】3列目(地力・特注)1着 ➔ 2・3列目 ➔ 全相手',
+      badge: '3列目1着固定',
+      structureText: `${tan4First.join(',')} → ${tan4Second.join(',')} → ${tan4Third.join(',')}`,
+      subNote: '天皇賞(秋)の⑰→⑩→③のように、3列目の地力上位馬・特注穴が1着で突き抜ける大波乱仕様',
+      combos: tan4Combos,
+      count: tan4Combos.length,
+    },
+  ];
 
   return {
     level,
     badgeText,
     headline,
     reason,
-    tatemeBoxTargets: boxHorses.map((h) => ({
-      umaban: h.umaban,
-      bamei: h.bamei,
-      shisu: h.shisu,
-      odds: h.odds,
-    })),
-    tatemeBoxCombos,
-    tatemeBoxCount: tatemeBoxCombos.length,
-    reverseFirst,
-    reverseSecond,
-    reverseThird,
-    reverseCombos,
-    reverseCount: reverseCombos.length,
-    anaFormRow1,
-    anaFormRow2,
-    anaFormRow3,
-    anaFormCombos,
-    anaFormCount: anaFormCombos.length,
-    anaWideAxes,
-    anaWideTargets,
-    anaWideCombos,
-    anaWideCount: anaWideCombos.length,
+    widePatterns,
+    sanrenpukuPatterns,
+    sanrentanPatterns,
   };
 }
 
@@ -685,6 +804,7 @@ export default function Home() {
   const [diagnosisResults, setDiagnosisResults] = useState<DiagnosisResult[] | null>(null);
   const [bettingTickets, setBettingTickets] = useState<BettingTickets | null>(null);
   const [activeStageView, setActiveStageView] = useState<'STAGE1' | 'STAGE2'>('STAGE2');
+  const [activePatternTab, setActivePatternTab] = useState<'WIDE' | 'PUKU' | 'TAN' | 'ALL'>('ALL');
   const [isDiagnosing, setIsDiagnosing] = useState(false);
 
   const [xPostText, setXPostText] = useState('');
@@ -973,10 +1093,10 @@ export default function Home() {
     <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl md:text-3xl font-bold mb-2 text-center text-red-500">
-          PRO仕様 競馬本格シミュレーター (対抗・地力・穴攻め進化版)
+          PRO仕様 競馬本格シミュレーター (2・3列目攻略＆4パターン買い目搭載版)
         </h1>
         <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
-          [ ①DB×5走柱統合 × ②高速上がり・外枠地力保護 × ③血統・ローテ・追切 × ④対抗・穴攻め馬券＆𝕏共有 ]
+          [ ①DB×5走柱統合 × ②高速上がり・外枠地力保護 × ③2・3列目ワイド＆3連系4パターン × ④𝕏共有 ]
         </p>
 
         {/* STEP 1 */}
@@ -1368,7 +1488,7 @@ export default function Home() {
             >
               {isDiagnosing
                 ? '分析中...'
-                : '📊 第2段階：枠・バイアス・ローテ・追切・高速上がりを加味して最終診断 ＆ 推奨馬券出力！'}
+                : '📊 第2段階：枠・バイアス・ローテ・追切・高速上がりを加味して最終診断 ＆ 全パターン買い目出力！'}
             </button>
           </div>
         </div>
@@ -1378,7 +1498,7 @@ export default function Home() {
           <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4">
               <h2 className="text-xl md:text-2xl font-bold text-indigo-400">
-                STEP 3: 📊 2段階AI全頭診断 ＆ 推奨馬券出力レポート
+                STEP 3: 📊 2段階AI全頭診断 ＆ 戦術別4パターン買い目レポート
               </h2>
               <div className="flex gap-2 bg-gray-900 p-1 rounded-lg border border-gray-700">
                 <button
@@ -1433,7 +1553,7 @@ export default function Home() {
             {bettingTickets && (
               <div className="mb-8 bg-gray-950 border-2 border-indigo-500/70 rounded-xl p-4 md:p-6 shadow-xl">
                 <h3 className="text-base md:text-lg font-extrabold text-yellow-400 mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
-                  🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 対抗・穴攻め買い目
+                  🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 戦術別4パターン買い目
                 </h3>
 
                 {/* AI予想印（◎〇▲☆△）一覧 ＆ 𝕏ワンタップ共有パネル */}
@@ -1559,6 +1679,7 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* 1列目・2列目・3列目・完全消しの役割グループ一覧 */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6 text-xs">
                   <div className="bg-yellow-950/40 border border-yellow-600/60 rounded-lg p-3">
                     <div className="text-yellow-400 font-bold mb-1.5">👑 1列目（1着軸本命）</div>
@@ -1590,7 +1711,7 @@ export default function Home() {
 
                   <div className="bg-emerald-950/40 border border-emerald-500/60 rounded-lg p-3">
                     <div className="text-emerald-300 font-bold mb-1.5">
-                      🛡️ 3列目追加（地力上位の救済ヒモ）
+                      🛡️ 3列目（地力救済・特注穴ヒモ）
                     </div>
                     <div className="flex flex-col gap-1.5">
                       {bettingTickets.formation_groups.saver_3rd.length > 0 ? (
@@ -1638,320 +1759,247 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* 馬券出力テーブル */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
-                  <div className="bg-gray-900 border border-gray-700 rounded-lg p-3.5 flex flex-col gap-3">
-                    <div>
-                      <div className="flex justify-between items-center font-bold text-amber-400 border-b border-gray-800 pb-1 mb-1.5">
-                        <span>① 単勝</span>
-                        <span className="text-xs bg-amber-900/40 px-2 py-0.5 rounded">
-                          計 {bettingTickets.tansho.count} 点
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {bettingTickets.tansho.picks.map((p) => (
-                          <span
-                            key={p.umaban}
-                            className="bg-gray-800 border border-gray-600 px-2.5 py-1 rounded font-bold text-white"
-                          >
-                            {p.type}: <span className="text-yellow-300">{p.umaban}番</span> {p.bamei}{' '}
-                            ({p.odds}倍)
-                          </span>
-                        ))}
-                      </div>
+                {/* 単勝・複勝・1着軸ワイド（基本買い目） */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 text-xs">
+                  <div className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                    <div className="flex justify-between items-center font-bold text-amber-400 border-b border-gray-800 pb-1 mb-1.5">
+                      <span>① 単勝</span>
+                      <span className="bg-amber-900/40 px-2 py-0.5 rounded">
+                        計 {bettingTickets.tansho.count} 点
+                      </span>
                     </div>
-
-                    <div>
-                      <div className="flex justify-between items-center font-bold text-sky-400 border-b border-gray-800 pb-1 mb-1.5">
-                        <span>② 複勝</span>
-                        <span className="text-xs bg-sky-900/40 px-2 py-0.5 rounded">
-                          計 {bettingTickets.fukusho.count} 点
+                    <div className="flex flex-wrap gap-1.5">
+                      {bettingTickets.tansho.picks.map((p) => (
+                        <span
+                          key={p.umaban}
+                          className="bg-gray-800 border border-gray-600 px-2 py-1 rounded font-bold text-white"
+                        >
+                          {p.type}: <span className="text-yellow-300">{p.umaban}番</span> {p.bamei}{' '}
+                          ({p.odds}倍)
                         </span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {bettingTickets.fukusho.picks.map((p) => (
-                          <span
-                            key={p.umaban}
-                            className="bg-gray-800 border border-gray-600 px-2.5 py-1 rounded font-bold text-white"
-                          >
-                            {p.type}: <span className="text-sky-300">{p.umaban}番</span> {p.bamei}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center font-bold text-pink-400 border-b border-gray-800 pb-1 mb-1.5">
-                        <span>③ ワイド（1着軸 ➔ 相手本線流し）</span>
-                        <span className="text-xs bg-pink-900/40 px-2 py-0.5 rounded">
-                          計 {bettingTickets.wide.count} 点
-                        </span>
-                      </div>
-                      <div className="font-mono font-bold text-white">
-                        軸: <span className="text-yellow-300">{bettingTickets.wide.axis}番</span> ➔
-                        相手: {bettingTickets.wide.targets.join(', ')}番
-                      </div>
-                      <div className="text-[11px] text-gray-400 mt-1">
-                        買い目: {bettingTickets.wide.combos.join(' / ')}
-                      </div>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="bg-gray-900 border border-gray-700 rounded-lg p-3.5 flex flex-col gap-3">
-                    <div>
-                      <div className="flex justify-between items-center font-bold text-emerald-400 border-b border-gray-800 pb-1 mb-1.5">
-                        <span>④ 3連複（フォーメーション）【推奨】</span>
-                        <span className="text-xs bg-emerald-900/40 px-2 py-0.5 rounded">
-                          計 {bettingTickets.sanrenpuku_formation.count} 点
-                        </span>
-                      </div>
-                      <div className="font-mono text-xs leading-relaxed text-gray-200">
-                        <div>
-                          1列目(軸):{' '}
-                          <span className="text-yellow-300 font-bold">
-                            {bettingTickets.sanrenpuku_formation.row1.join(', ')}
-                          </span>
-                        </div>
-                        <div>
-                          2列目(本線):{' '}
-                          <span className="text-indigo-300 font-bold">
-                            {bettingTickets.sanrenpuku_formation.row2.join(', ')}
-                          </span>
-                        </div>
-                        <div>
-                          3列目(本線+地力救済):{' '}
-                          <span className="text-emerald-300 font-bold">
-                            {bettingTickets.sanrenpuku_formation.row3.join(', ')}
-                          </span>
-                        </div>
-                      </div>
+                  <div className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                    <div className="flex justify-between items-center font-bold text-sky-400 border-b border-gray-800 pb-1 mb-1.5">
+                      <span>② 複勝</span>
+                      <span className="bg-sky-900/40 px-2 py-0.5 rounded">
+                        計 {bettingTickets.fukusho.count} 点
+                      </span>
                     </div>
-
-                    <div>
-                      <div className="flex justify-between items-center font-bold text-teal-400 border-b border-gray-800 pb-1 mb-1.5">
-                        <span>⑤ 3連複（1頭軸流し）</span>
-                        <span className="text-xs bg-teal-900/40 px-2 py-0.5 rounded">
-                          計 {bettingTickets.sanrenpuku_nagashi.count} 点
+                    <div className="flex flex-wrap gap-1.5">
+                      {bettingTickets.fukusho.picks.map((p) => (
+                        <span
+                          key={p.umaban}
+                          className="bg-gray-800 border border-gray-600 px-2 py-1 rounded font-bold text-white"
+                        >
+                          {p.type}: <span className="text-sky-300">{p.umaban}番</span> {p.bamei}
                         </span>
-                      </div>
-                      <div className="font-mono text-xs text-gray-200">
-                        軸:{' '}
-                        <span className="text-yellow-300 font-bold">
-                          {bettingTickets.sanrenpuku_nagashi.axis}
-                        </span>{' '}
-                        ー 相手: {bettingTickets.sanrenpuku_nagashi.targets.join(', ')}
-                      </div>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="md:col-span-2 bg-gradient-to-r from-indigo-950/60 to-purple-950/60 border border-indigo-400/70 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <div className="flex justify-between items-center font-extrabold text-yellow-300 border-b border-indigo-700 pb-1.5 mb-2">
-                        <span>⑥ 3連単（フォーメーション）【本線勝負馬券】</span>
-                        <span className="text-xs bg-yellow-500 text-gray-900 font-black px-2.5 py-0.5 rounded">
-                          計 {bettingTickets.sanrentan_formation.count} 点
-                        </span>
-                      </div>
-                      <div className="font-mono text-xs md:text-sm space-y-1">
-                        <div>
-                          1着固定(頭):{' '}
-                          <span className="text-yellow-300 font-extrabold">
-                            {bettingTickets.sanrentan_formation.first.join(', ')}番
-                          </span>
-                        </div>
-                        <div>
-                          2着(バイアス本線):{' '}
-                          <span className="text-pink-300 font-extrabold">
-                            {bettingTickets.sanrentan_formation.second.join(', ')}番
-                          </span>
-                        </div>
-                        <div>
-                          3着(本線＋地力救済):{' '}
-                          <span className="text-emerald-300 font-extrabold">
-                            {bettingTickets.sanrentan_formation.third.join(', ')}番
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-[11px] text-gray-300 font-mono bg-black/40 p-2 rounded max-h-20 overflow-y-auto">
-                        {bettingTickets.sanrentan_formation.combos.join(' / ')}
-                      </div>
+                  <div className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                    <div className="flex justify-between items-center font-bold text-pink-400 border-b border-gray-800 pb-1 mb-1.5">
+                      <span>③ 基本ワイド（1列目軸 ➔ 2列目本線）</span>
+                      <span className="bg-pink-900/40 px-2 py-0.5 rounded">
+                        計 {bettingTickets.wide.count} 点
+                      </span>
                     </div>
-
-                    <div>
-                      <div className="flex justify-between items-center font-extrabold text-purple-300 border-b border-indigo-700 pb-1.5 mb-2">
-                        <span>⑦ 3連単（1頭軸流し・1着固定）</span>
-                        <span className="text-xs bg-purple-800 text-white font-bold px-2.5 py-0.5 rounded">
-                          計 {bettingTickets.sanrentan_nagashi.count} 点
-                        </span>
-                      </div>
-                      <div className="font-mono text-xs md:text-sm space-y-1">
-                        <div>
-                          1着固定(頭):{' '}
-                          <span className="text-yellow-300 font-extrabold">
-                            {bettingTickets.sanrentan_nagashi.first}番
-                          </span>
-                        </div>
-                        <div>
-                          2・3着流し相手:{' '}
-                          <span className="text-white font-bold">
-                            {bettingTickets.sanrentan_nagashi.targets.join(', ')}番
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-2 text-[11px] text-gray-400">
-                        ※地力上位馬（バイアス救済・持ち時計注意馬）が2着まで食い込むケースも丸ごとカバーする1着固定流しです。
-                      </div>
+                    <div className="font-mono font-bold text-white">
+                      軸: <span className="text-yellow-300">{bettingTickets.wide.axis}番</span> ➔
+                      相手: {bettingTickets.wide.targets.join(', ')}番
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-0.5">
+                      買い目: {bettingTickets.wide.combos.join(' / ')}
                     </div>
                   </div>
-
-                  {/* ⑧タテ目保険3連複BOX ＆ ⑨対抗・地力上位 頭逆転3連単 ＆ ⑩対抗・穴から狙う攻めの馬券 */}
-                  {axisDefensePlan && (
-                    <div className="md:col-span-2 bg-gradient-to-r from-rose-950/70 via-amber-950/50 to-gray-900 border-2 border-rose-500/80 rounded-lg p-4 flex flex-col gap-5">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="flex justify-between items-center font-extrabold text-rose-300 border-b border-rose-700/70 pb-1.5 mb-2">
-                            <span>⑧ 【軸飛び・タテ目保険】相手上位 3連複BOX</span>
-                            <span className="text-xs bg-rose-600 text-white font-black px-2.5 py-0.5 rounded">
-                              計 {axisDefensePlan.tatemeBoxCount} 点
-                            </span>
-                          </div>
-                          <div className="text-xs space-y-1">
-                            <div className="font-mono font-bold text-white">
-                              BOX対象 ({axisDefensePlan.tatemeBoxTargets.length}頭):{' '}
-                              <span className="text-rose-300 font-extrabold">
-                                {axisDefensePlan.tatemeBoxTargets
-                                  .map((t) => `${t.umaban}番`)
-                                  .join(', ')}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-gray-300">
-                              内訳:{' '}
-                              {axisDefensePlan.tatemeBoxTargets
-                                .map((t) => `${t.umaban}${t.bamei}(${t.odds}倍)`)
-                                .join(' / ')}
-                            </div>
-                          </div>
-                          <div className="mt-2 text-[11px] text-rose-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
-                            {axisDefensePlan.tatemeBoxCombos.join(' / ')}
-                          </div>
-                          <div className="mt-1 text-[10px] text-gray-400">
-                            ※1着軸が馬群に包まれる等で飛んだ際、対抗・地力救済・特注穴同士で決まる高配当タテ目を拾う保険BOXです。
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="flex justify-between items-center font-extrabold text-amber-300 border-b border-amber-700/70 pb-1.5 mb-2">
-                            <span>⑨ 【対抗・地力上位 頭逆転】3連単フォーメーション</span>
-                            <span className="text-xs bg-amber-500 text-gray-950 font-black px-2.5 py-0.5 rounded">
-                              計 {axisDefensePlan.reverseCount} 点
-                            </span>
-                          </div>
-                          <div className="font-mono text-xs space-y-1">
-                            <div>
-                              1着(対抗＋地力TOP3救済):{' '}
-                              <span className="text-pink-300 font-extrabold">
-                                {axisDefensePlan.reverseFirst.join(', ')}番
-                              </span>
-                            </div>
-                            <div>
-                              2着(本命＋対抗＋特注穴):{' '}
-                              <span className="text-yellow-300 font-extrabold">
-                                {axisDefensePlan.reverseSecond.join(', ')}番
-                              </span>
-                            </div>
-                            <div>
-                              3着(本命＋本線＋救済):{' '}
-                              <span className="text-emerald-300 font-extrabold">
-                                {axisDefensePlan.reverseThird.join(', ')}番
-                              </span>
-                            </div>
-                          </div>
-                          <div className="mt-2 text-[11px] text-amber-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
-                            {axisDefensePlan.reverseCombos.join(' / ')}
-                          </div>
-                          <div className="mt-1 text-[10px] text-gray-400">
-                            ※外枠等で減点された『地力TOP3馬』や『対抗馬』が1着に突き抜け、2着に穴馬や本命が入る波乱決着まで網羅します。
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* ★新設⑩：対抗・穴から狙う攻めの馬券（3連複フォーメーション ＆ 穴ワイド） */}
-                      <div className="border-t border-rose-800/70 pt-4">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 mb-3">
-                          <span className="text-sm font-black text-cyan-300">
-                            ⑩ 【対抗・特注穴から狙う高配当馬券】本命包まれ・ヒモ荒れ狙い撃ちプラン
-                          </span>
-                          <span className="text-[11px] text-gray-300">
-                            ※1番人気・本命軸(◎)を1列目から外し、対抗(〇)・地力上位・妙味穴(☆)を軸に据える高回収率仕様
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="bg-gray-950/80 border border-cyan-600/60 rounded-lg p-3">
-                            <div className="flex justify-between items-center font-extrabold text-cyan-300 border-b border-gray-800 pb-1 mb-2">
-                              <span>🔥 対抗・地力・穴軸 3連複フォーメーション</span>
-                              <span className="text-xs bg-cyan-600 text-white font-black px-2 py-0.5 rounded">
-                                計 {axisDefensePlan.anaFormCount} 点
-                              </span>
-                            </div>
-                            <div className="font-mono text-xs space-y-1">
-                              <div>
-                                1列目(対抗・地力救済・特注):{' '}
-                                <span className="text-cyan-300 font-extrabold">
-                                  {axisDefensePlan.anaFormRow1.join(', ')}番
-                                </span>
-                              </div>
-                              <div>
-                                2列目(1列目＋妙味上位穴):{' '}
-                                <span className="text-pink-300 font-extrabold">
-                                  {axisDefensePlan.anaFormRow2.join(', ')}番
-                                </span>
-                              </div>
-                              <div>
-                                3列目(本命◎＋相手全頭):{' '}
-                                <span className="text-emerald-300 font-extrabold">
-                                  {axisDefensePlan.anaFormRow3.join(', ')}番
-                                </span>
-                              </div>
-                            </div>
-                            <div className="mt-2 text-[11px] text-cyan-100 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
-                              {axisDefensePlan.anaFormCombos.join(' / ')}
-                            </div>
-                          </div>
-
-                          <div className="bg-gray-950/80 border border-pink-600/60 rounded-lg p-3">
-                            <div className="flex justify-between items-center font-extrabold text-pink-300 border-b border-gray-800 pb-1 mb-2">
-                              <span>💣 対抗・地力上位 ➔ 妙味穴 ワイドフォーメーション</span>
-                              <span className="text-xs bg-pink-600 text-white font-black px-2 py-0.5 rounded">
-                                計 {axisDefensePlan.anaWideCount} 点
-                              </span>
-                            </div>
-                            <div className="font-mono text-xs space-y-1">
-                              <div>
-                                軸(対抗1番手・地力TOP3救済):{' '}
-                                <span className="text-yellow-300 font-extrabold">
-                                  {axisDefensePlan.anaWideAxes.join(', ')}番
-                                </span>
-                              </div>
-                              <div>
-                                狙い穴(特注☆・妙味上位・救済):{' '}
-                                <span className="text-pink-300 font-extrabold">
-                                  {axisDefensePlan.anaWideTargets.join(', ')}番
-                                </span>
-                              </div>
-                            </div>
-                            <div className="mt-2 text-[11px] text-pink-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
-                              {axisDefensePlan.anaWideCombos.join(' / ')}
-                            </div>
-                            <div className="mt-1 text-[10px] text-gray-400">
-                              ※低オッズの本命ワイドを避け、実力対抗馬・地力救済馬と妙味穴馬の組み合わせで高配当ワイドを狙い撃ちます。
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
+
+                {/* ★新設: ワイド(2列目×3列目)・3連複・3連単 各4パターン戦術ボード */}
+                {axisDefensePlan && (
+                  <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-t border-gray-800 pt-4">
+                      <div>
+                        <h4 className="text-sm md:text-base font-black text-white">
+                          🔥 戦術別 4パターン買い目ボード（2列目×3列目ワイド ／ 3連複4種 ／ 3連単4種）
+                        </h4>
+                        <p className="text-[11px] text-gray-400">
+                          レースの波乱度やオッズに合わせて、各券種4つの戦略パターンから最適な買い目を選択できます。
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 bg-gray-900 p-1 rounded-lg border border-gray-700 text-xs">
+                        <button
+                          onClick={() => setActivePatternTab('ALL')}
+                          className={`px-2.5 py-1 rounded font-bold transition ${
+                            activePatternTab === 'ALL'
+                              ? 'bg-indigo-600 text-white'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          全表示
+                        </button>
+                        <button
+                          onClick={() => setActivePatternTab('WIDE')}
+                          className={`px-2.5 py-1 rounded font-bold transition ${
+                            activePatternTab === 'WIDE'
+                              ? 'bg-pink-600 text-white'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          2・3列目ワイド (4種)
+                        </button>
+                        <button
+                          onClick={() => setActivePatternTab('PUKU')}
+                          className={`px-2.5 py-1 rounded font-bold transition ${
+                            activePatternTab === 'PUKU'
+                              ? 'bg-emerald-600 text-white'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          3連複 (4種)
+                        </button>
+                        <button
+                          onClick={() => setActivePatternTab('TAN')}
+                          className={`px-2.5 py-1 rounded font-bold transition ${
+                            activePatternTab === 'TAN'
+                              ? 'bg-amber-500 text-gray-950'
+                              : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          3連単 (4種)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* A. ワイド（2列目 × 3列目で買う 4パターン） */}
+                    {(activePatternTab === 'ALL' || activePatternTab === 'WIDE') && (
+                      <div className="bg-gradient-to-br from-pink-950/40 to-gray-900 border-2 border-pink-500/70 rounded-xl p-4">
+                        <div className="flex items-center justify-between border-b border-pink-800/70 pb-2 mb-3">
+                          <span className="text-sm md:text-base font-extrabold text-pink-300">
+                            💣 【2列目 × 3列目 攻略ワイド】本命飛び・タテ目・紐穴狙い撃ち（全4パターン）
+                          </span>
+                          <span className="text-[11px] bg-pink-900/70 text-pink-200 px-2.5 py-0.5 rounded-full font-bold">
+                            2列目(本線) × 3列目(地力救済・妙味穴)
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                          {axisDefensePlan.widePatterns.map((pat) => (
+                            <div
+                              key={pat.id}
+                              className="bg-gray-950/90 border border-pink-700/50 rounded-lg p-3 flex flex-col justify-between"
+                            >
+                              <div>
+                                <div className="flex justify-between items-center gap-2 border-b border-gray-800 pb-1.5 mb-2">
+                                  <span className="font-extrabold text-xs md:text-sm text-pink-200">
+                                    {pat.title}
+                                  </span>
+                                  <span className="text-xs bg-pink-600 text-white font-black px-2 py-0.5 rounded whitespace-nowrap">
+                                    計 {pat.count} 点
+                                  </span>
+                                </div>
+                                <div className="font-mono text-xs font-extrabold text-yellow-300 mb-1">
+                                  {pat.structureText}
+                                </div>
+                                <p className="text-[11px] text-gray-400 mb-2 leading-snug">
+                                  {pat.subNote}
+                                </p>
+                              </div>
+                              <div className="text-[11px] text-pink-100 font-mono bg-black/50 p-2 rounded border border-gray-800 max-h-16 overflow-y-auto">
+                                {pat.combos.length > 0 ? pat.combos.join(' / ') : '該当馬なし'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* B. 3連複（戦術別 4パターン） */}
+                    {(activePatternTab === 'ALL' || activePatternTab === 'PUKU') && (
+                      <div className="bg-gradient-to-br from-emerald-950/40 to-gray-900 border-2 border-emerald-500/70 rounded-xl p-4">
+                        <div className="flex items-center justify-between border-b border-emerald-800/70 pb-2 mb-3">
+                          <span className="text-sm md:text-base font-extrabold text-emerald-300">
+                            🛡️ 【3連複 4大フォーメーション＆BOX】王道軸・2/3列目W軸・タテ目BOX・3列目1頭軸
+                          </span>
+                          <span className="text-[11px] bg-emerald-900/70 text-emerald-200 px-2.5 py-0.5 rounded-full font-bold">
+                            全4パターン
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                          {axisDefensePlan.sanrenpukuPatterns.map((pat) => (
+                            <div
+                              key={pat.id}
+                              className="bg-gray-950/90 border border-emerald-700/50 rounded-lg p-3 flex flex-col justify-between"
+                            >
+                              <div>
+                                <div className="flex justify-between items-center gap-2 border-b border-gray-800 pb-1.5 mb-2">
+                                  <span className="font-extrabold text-xs md:text-sm text-emerald-200">
+                                    {pat.title}
+                                  </span>
+                                  <span className="text-xs bg-emerald-600 text-white font-black px-2 py-0.5 rounded whitespace-nowrap">
+                                    計 {pat.count} 点
+                                  </span>
+                                </div>
+                                <div className="font-mono text-xs font-extrabold text-yellow-300 mb-1">
+                                  {pat.structureText}
+                                </div>
+                                <p className="text-[11px] text-gray-400 mb-2 leading-snug">
+                                  {pat.subNote}
+                                </p>
+                              </div>
+                              <div className="text-[11px] text-emerald-100 font-mono bg-black/50 p-2 rounded border border-gray-800 max-h-16 overflow-y-auto">
+                                {pat.combos.length > 0 ? pat.combos.join(' / ') : '該当馬なし'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* C. 3連単（1着固定＆逆転フォーメーション 4パターン） */}
+                    {(activePatternTab === 'ALL' || activePatternTab === 'TAN') && (
+                      <div className="bg-gradient-to-br from-indigo-950/50 via-purple-950/40 to-gray-900 border-2 border-amber-400/80 rounded-xl p-4">
+                        <div className="flex items-center justify-between border-b border-amber-700/70 pb-2 mb-3">
+                          <span className="text-sm md:text-base font-extrabold text-yellow-300">
+                            👑 【3連単 4大フォーメーション】本命頭・3列目2着抜擢・2列目頭・3列目(地力/特注)頭
+                          </span>
+                          <span className="text-[11px] bg-amber-500 text-gray-950 px-2.5 py-0.5 rounded-full font-black">
+                            1着固定＆逆転 全4パターン
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                          {axisDefensePlan.sanrentanPatterns.map((pat) => (
+                            <div
+                              key={pat.id}
+                              className="bg-gray-950/90 border border-amber-600/50 rounded-lg p-3 flex flex-col justify-between"
+                            >
+                              <div>
+                                <div className="flex justify-between items-center gap-2 border-b border-gray-800 pb-1.5 mb-2">
+                                  <span className="font-extrabold text-xs md:text-sm text-amber-200">
+                                    {pat.title}
+                                  </span>
+                                  <span className="text-xs bg-amber-500 text-gray-950 font-black px-2 py-0.5 rounded whitespace-nowrap">
+                                    計 {pat.count} 点
+                                  </span>
+                                </div>
+                                <div className="font-mono text-xs font-extrabold text-pink-300 mb-1">
+                                  {pat.structureText}
+                                </div>
+                                <p className="text-[11px] text-gray-400 mb-2 leading-snug">
+                                  {pat.subNote}
+                                </p>
+                              </div>
+                              <div className="text-[11px] text-amber-100 font-mono bg-black/50 p-2 rounded border border-gray-800 max-h-20 overflow-y-auto">
+                                {pat.combos.length > 0 ? pat.combos.join(' / ') : '該当馬なし'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
