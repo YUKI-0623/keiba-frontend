@@ -160,6 +160,15 @@ interface AxisDefensePlan {
   reverseThird: number[];
   reverseCombos: string[];
   reverseCount: number;
+  anaFormRow1: number[];
+  anaFormRow2: number[];
+  anaFormRow3: number[];
+  anaFormCombos: string[];
+  anaFormCount: number;
+  anaWideAxes: number[];
+  anaWideTargets: number[];
+  anaWideCombos: string[];
+  anaWideCount: number;
 }
 
 interface HorseMarksSummary {
@@ -318,7 +327,6 @@ function buildHorseMarksAndPostText(
     markMap[honmei.umaban] = '◎';
   }
 
-  // 相手候補プール（2列目本線 ＋ 3列目救済馬）
   const targetUmabans: number[] = [];
   for (const m of tickets.formation_groups.main_2nd) {
     if (m.umaban !== honmei?.umaban && !targetUmabans.includes(m.umaban)) {
@@ -335,19 +343,16 @@ function buildHorseMarksAndPostText(
     .map((u) => diagnosis.find((d) => d.umaban === u))
     .filter((d): d is DiagnosisResult => Boolean(d));
 
-  // 〇（対抗）：相手本線の1番手
   const taikou = targetPool.length >= 1 ? targetPool[0] : null;
   if (taikou) {
     markMap[taikou.umaban] = '〇';
   }
 
-  // ▲（単穴）：相手本線の2番手
   const tanana = targetPool.length >= 2 ? targetPool[1] : null;
   if (tanana) {
     markMap[tanana.umaban] = '▲';
   }
 
-  // ☆（特注）：残りの相手候補の中で「妙味指数（myoumi）」が最も高い穴馬
   const remainingPool = targetPool.slice(2);
   let tokuchu: DiagnosisResult | null = null;
   if (remainingPool.length > 0) {
@@ -355,7 +360,6 @@ function buildHorseMarksAndPostText(
     markMap[tokuchu.umaban] = '☆';
   }
 
-  // △（連下）：残りの相手馬すべて
   const renshita: DiagnosisResult[] = [];
   for (const h of remainingPool) {
     if (h.umaban !== tokuchu?.umaban) {
@@ -364,7 +368,6 @@ function buildHorseMarksAndPostText(
     }
   }
 
-  // レースタイトルの整形
   const cleanTitle = (raceName || '本日のレース')
     .replace(/出馬表.*$/, '')
     .replace(/\(.*?\)/g, '')
@@ -372,7 +375,6 @@ function buildHorseMarksAndPostText(
   const headerTitle = placeName ? `${placeName} ${cleanTitle}` : cleanTitle;
   const hashtagRace = cleanTitle.replace(/\s+/g, '');
 
-  // Xポスト文面（馬名なし・馬番のみ）
   const lines: string[] = [];
   lines.push(`【${headerTitle}】AI予想🎯`);
   if (honmei) lines.push(`◎ ${honmei.umaban}`);
@@ -409,7 +411,7 @@ function buildHorseMarksAndPostText(
 }
 
 /**
- * アプローチ⑤: 軸信頼度ジャッジ ＆ 軸飛び（タテ目）防御BOX・逆転フォーメーション自動構築関数
+ * 軸信頼度ジャッジ ＆ 対抗・地力上位・穴から狙う拡張買い目（⑧・⑨・⑩）構築関数
  */
 function buildAxisDefensePlan(
   diagnosis: DiagnosisResult[] | null,
@@ -431,7 +433,7 @@ function buildAxisDefensePlan(
   let level: 'HIGH' | 'MEDIUM' | 'RISK' = 'HIGH';
   let badgeText = '👑 軸信頼度: S（鉄板1着固定推奨）';
   let headline = `${axisHorse.umaban}番 ${axisHorse.bamei} の1着固定が本線（2位と+${shisuGap}pt差）`;
-  let reason = `『①素の地力(${axisHorse.stage1_rank}位)』と『②最終指数(1位)』がともにトップクラスで安定しており、1着固定フォーメーションが最も資金効率に優れます。`;
+  let reason = `『①素の地力(${axisHorse.stage1_rank}位)』と『②最終指数(1位)』がともにトップクラスで安定。本線フォーメーションを主軸にしつつ、高配当狙いなら下の『⑨・⑩対抗＆穴攻め馬券』を少額併用。`;
 
   const fav1IsVulnerable =
     fav1Horse.odds <= 2.8 && (fav1Horse.stage2_rank >= 3 || fav1Horse.stage1_rank >= 3);
@@ -439,25 +441,25 @@ function buildAxisDefensePlan(
 
   if (fav1IsVulnerable || (axisHorse.odds <= 2.5 && axisHorse.stage1_rank >= 2) || shisuGap < 1.5) {
     level = 'RISK';
-    badgeText = '🚨 軸信頼度: B（波乱・タテ目厳重警戒モード）';
+    badgeText = '🚨 軸信頼度: B（波乱・イン詰まり・タテ目厳重警戒）';
     if (fav1IsVulnerable && fav1Horse.umaban !== axisHorse.umaban) {
-      headline = `⚠️ 1番人気(${fav1Horse.umaban}番${fav1Horse.bamei}:${fav1Horse.odds}倍)に波乱リスク！タテ目BOX＆逆転ケア推奨`;
-      reason = `単勝${fav1Horse.odds}倍の1番人気${fav1Horse.bamei}が素の地力${fav1Horse.stage1_rank}位・最終${fav1Horse.stage2_rank}位に留まっています。人気馬飛びや相手上位同士で決着する『タテ目』の期待値が極めて高いレースです。`;
+      headline = `⚠️ 1番人気(${fav1Horse.umaban}番${fav1Horse.bamei}:${fav1Horse.odds}倍)に波乱リスク！対抗・地力上位・穴攻め推奨`;
+      reason = `単勝${fav1Horse.odds}倍の1番人気${fav1Horse.bamei}が素の地力${fav1Horse.stage1_rank}位・最終${fav1Horse.stage2_rank}位に留まっています。人気馬の馬群包まれや、外枠の地力上位馬・妙味穴馬が突き抜ける『⑨・⑩対抗＆穴から狙う馬券』の期待値が極めて高いレースです。`;
     } else {
-      headline = `⚠️ 1位(${axisHorse.umaban}番)と2位(${secondHorse.umaban}番)の指数差が${shisuGap}ptと僅差！軸飛び・頭逆転ケア推奨`;
-      reason = `1着軸(${axisHorse.bamei})が素の地力${axisHorse.stage1_rank}位、または2位(${secondHorse.bamei})との能力差が僅少です。1着固定だけでなく、下の『⑧タテ目保険3連複BOX』と『⑨頭逆転フォーメーション』の併用を強く推奨します。`;
+      headline = `⚠️ 1位(${axisHorse.umaban}番)と2位(${secondHorse.umaban}番)の指数差が${shisuGap}ptと僅差！対抗・地力馬の頭逆転＆穴攻め推奨`;
+      reason = `1着軸(${axisHorse.bamei})が素の地力${axisHorse.stage1_rank}位、または上位陣の能力差が僅少です。内枠包まれ等で軸が飛ぶケースも想定し、『⑨地力上位・対抗の頭逆転3連単』と『⑩対抗・穴から狙う3連複F』の併用を強く推奨します。`;
     }
   } else if (axisNotPureTop || shisuGap < 3.5) {
     level = 'MEDIUM';
-    badgeText = '⚡ 軸信頼度: A（2列目逆転・タテ目小口保険推奨）';
-    headline = `本線は${axisHorse.umaban}番${axisHorse.bamei}も、相手上位(${secondHorse.umaban}番など)の頭突き抜け・タテ目に注意`;
-    reason = `2位馬との指数差は+${shisuGap}pt（地力1位は${byStage1[0].umaban}番${byStage1[0].bamei}）です。3連単1着固定をメインにしつつ、念のため『⑧タテ目保険BOX』を少額押さえると取りこぼしを防げます。`;
+    badgeText = '⚡ 軸信頼度: A（対抗・地力上位の頭逆転＆穴ケア推奨）';
+    headline = `本線は${axisHorse.umaban}番${axisHorse.bamei}も、対抗(${secondHorse.umaban}番)や地力上位馬の突き抜け・ヒモ荒れに注意`;
+    reason = `2位馬との指数差は+${shisuGap}pt（地力1位は${byStage1[0].umaban}番${byStage1[0].bamei}）です。3連単1着固定をメインにしつつ、『⑨頭逆転3連単』や『⑩対抗・穴軸フォーメーション』を押さえると高配当の取りこぼしを防げます。`;
   }
 
-  const candidatePool: DiagnosisResult[] = [];
   const main2ndUmabans = tickets.formation_groups.main_2nd.map((m) => m.umaban);
   const saver3rdUmabans = tickets.formation_groups.saver_3rd.map((s) => s.umaban);
 
+  const candidatePool: DiagnosisResult[] = [];
   for (const u of [...main2ndUmabans, ...saver3rdUmabans]) {
     const found = diagnosis.find((d) => d.umaban === u);
     if (found && !candidatePool.some((c) => c.umaban === found.umaban)) {
@@ -470,11 +472,18 @@ function buildAxisDefensePlan(
         candidatePool.push(d);
       }
     }
-    if (candidatePool.length >= 5) break;
+    if (candidatePool.length >= 6) break;
   }
 
-  const boxHorses = candidatePool
-    .sort((a, b) => b.shisu + b.stage1_shisu * 0.5 - (a.shisu + a.stage1_shisu * 0.5))
+  // ⑧ タテ目保険 3連複BOX（5頭）
+  const boxHorses = [...candidatePool]
+    .sort(
+      (a, b) =>
+        b.shisu +
+        b.stage1_shisu * 0.55 +
+        (b.myoumi >= 58 ? 2.5 : 0) -
+        (a.shisu + a.stage1_shisu * 0.55 + (a.myoumi >= 58 ? 2.5 : 0))
+    )
     .slice(0, 5);
 
   const boxUmabans = boxHorses.map((h) => h.umaban).sort((a, b) => a - b);
@@ -487,15 +496,112 @@ function buildAxisDefensePlan(
     }
   }
 
-  const reverseFirst = main2ndUmabans.slice(0, 2);
-  const reverseSecond = [axisHorse.umaban];
-  const reverseThird = Array.from(new Set([...main2ndUmabans, ...saver3rdUmabans])).slice(0, 6);
+  // ★地力TOP3のバイアス救済馬（例: ⑰ダノンデサイルのように素の地力3位以内だが外枠等で2列目から漏れた実力馬）
+  const jirikiTopRescuedUmabans = byStage1
+    .filter(
+      (d) =>
+        d.umaban !== axisHorse.umaban &&
+        d.stage1_rank <= 3 &&
+        (d.time_limit_mult ?? 1.0) > 0.88 &&
+        (d.condition_mult ?? 1.0) > 0.88
+    )
+    .map((d) => d.umaban);
+
+  // ★特注穴・妙味上位馬（例: ⑩ネブラディスク・③レガレイラのように妙味指数が高い相手候補）
+  const highMyoumiAnaUmabans = [...candidatePool]
+    .filter((d) => d.myoumi >= 54.0 || d.odds >= 8.0)
+    .sort((a, b) => b.myoumi - a.myoumi || b.shisu - a.shisu)
+    .slice(0, 3)
+    .map((d) => d.umaban);
+
+  // ⑨ 【対抗・地力上位 頭逆転ケア】3連単フォーメーション
+  // 1着: 2列目本線上位2頭 ＋ 地力TOP3救済馬（ダノンデサイル等）
+  const reverseFirst = Array.from(
+    new Set([...main2ndUmabans.slice(0, 2), ...jirikiTopRescuedUmabans])
+  ).slice(0, 3);
+
+  // 2着: 本命軸(◎) ＋ 2列目本線 ＋ 妙味特注穴（本命が飛んで「地力馬→穴馬」になる決着もカバー）
+  const reverseSecond = Array.from(
+    new Set([
+      axisHorse.umaban,
+      ...main2ndUmabans.slice(0, 2),
+      ...highMyoumiAnaUmabans.slice(0, 2),
+    ])
+  ).slice(0, 4);
+
+  // 3着: 本命軸(◎) ＋ 相手本線 ＋ 3列目救済馬
+  const reverseThird = Array.from(
+    new Set([axisHorse.umaban, ...main2ndUmabans, ...saver3rdUmabans])
+  ).slice(0, 6);
+
   const reverseCombos: string[] = [];
   for (const f of reverseFirst) {
     for (const s of reverseSecond) {
       for (const t of reverseThird) {
         if (f !== s && s !== t && f !== t) {
           reverseCombos.push(`${f} → ${s} → ${t}`);
+        }
+      }
+    }
+  }
+
+  // ⑩ 【新設：対抗・穴から狙う高配当】3連複フォーメーション ＆ 穴ワイド
+  // 1列目: 対抗(〇)・単穴(▲)・地力TOP3救済馬・特注穴(☆) から上位3頭（あえて1番人気/本命◎を1列目から外した攻めの軸）
+  const anaFormRow1 = Array.from(
+    new Set([
+      ...main2ndUmabans.slice(0, 2),
+      ...jirikiTopRescuedUmabans,
+      ...highMyoumiAnaUmabans.slice(0, 1),
+    ])
+  ).slice(0, 3);
+
+  // 2列目: 1列目 ＋ 妙味上位穴馬・地力救済馬（ネブラディスク・レガレイラ等）
+  const anaFormRow2 = Array.from(
+    new Set([...anaFormRow1, ...highMyoumiAnaUmabans, ...saver3rdUmabans.slice(0, 2)])
+  ).slice(0, 5);
+
+  // 3列目: 2列目 ＋ 本命(◎) ＋ 相手全頭（本命が3着に負けるケースも、完全に飛ぶケースも両方的中）
+  const anaFormRow3 = Array.from(
+    new Set([...anaFormRow2, axisHorse.umaban, ...main2ndUmabans, ...saver3rdUmabans])
+  ).slice(0, 7);
+
+  const anaFormSet = new Set<string>();
+  const anaFormCombos: string[] = [];
+  for (const a of anaFormRow1) {
+    for (const b of anaFormRow2) {
+      for (const c of anaFormRow3) {
+        if (a !== b && b !== c && a !== c) {
+          const sorted = [a, b, c].sort((x, y) => x - y);
+          const key = `${sorted[0]} - ${sorted[1]} - ${sorted[2]}`;
+          if (!anaFormSet.has(key)) {
+            anaFormSet.add(key);
+            anaFormCombos.push(key);
+          }
+        }
+      }
+    }
+  }
+
+  // 穴ワイド（対抗・地力救済 ➔ 妙味上位穴・3列目救済）
+  const anaWideAxes = Array.from(
+    new Set([main2ndUmabans[0], ...jirikiTopRescuedUmabans].filter(Boolean))
+  ).slice(0, 2);
+  const anaWideTargets = Array.from(
+    new Set([...highMyoumiAnaUmabans, ...saver3rdUmabans])
+  )
+    .filter((u) => !anaWideAxes.includes(u))
+    .slice(0, 4);
+
+  const anaWideSet = new Set<string>();
+  const anaWideCombos: string[] = [];
+  for (const ax of anaWideAxes) {
+    for (const tg of anaWideTargets) {
+      if (ax !== tg) {
+        const pair = [ax, tg].sort((x, y) => x - y);
+        const key = `${pair[0]} - ${pair[1]}`;
+        if (!anaWideSet.has(key)) {
+          anaWideSet.add(key);
+          anaWideCombos.push(key);
         }
       }
     }
@@ -519,11 +625,20 @@ function buildAxisDefensePlan(
     reverseThird,
     reverseCombos,
     reverseCount: reverseCombos.length,
+    anaFormRow1,
+    anaFormRow2,
+    anaFormRow3,
+    anaFormCombos,
+    anaFormCount: anaFormCombos.length,
+    anaWideAxes,
+    anaWideTargets,
+    anaWideCombos,
+    anaWideCount: anaWideCombos.length,
   };
 }
 
 export default function Home() {
-  const [raceId, setRaceId] = useState('202608040911');
+  const [raceId, setRaceId] = useState('202605041111');
   const [fetching, setFetching] = useState(false);
 
   const [targetRaceName, setTargetRaceName] = useState('');
@@ -540,7 +655,7 @@ export default function Home() {
   const [trackBias, setTrackBias] = useState('フラット');
   const [biasStrength, setBiasStrength] = useState('中');
 
-  const [cushionValue, setCushionValue] = useState<number>(9.0);
+  const [cushionValue, setCushionValue] = useState<number>(9.5);
   const [autoStatus, setAutoStatus] = useState<AutoStatusInfo | null>(null);
 
   const [horses, setHorses] = useState<HorseData[]>([
@@ -677,7 +792,7 @@ export default function Home() {
 
         setTrackBias(data.auto_track_bias || 'フラット');
         setBiasStrength(data.auto_bias_strength || '中');
-        setCushionValue(9.0);
+        setCushionValue(9.5);
 
         setTargetRaceName(data.race_name || '');
         setTargetPlace(data.place_name || '');
@@ -858,10 +973,10 @@ export default function Home() {
     <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl md:text-3xl font-bold mb-2 text-center text-red-500">
-          PRO仕様 競馬本格シミュレーター (完成度90%＋𝕏共有搭載版)
+          PRO仕様 競馬本格シミュレーター (対抗・地力・穴攻め進化版)
         </h1>
         <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
-          [ ①DB×5走柱統合 × ②重賞着差・上がり順位 × ③血統距離適性 × ④ローテ・追切 × ⑤印自動付与＆𝕏ポスト ]
+          [ ①DB×5走柱統合 × ②高速上がり・外枠地力保護 × ③血統・ローテ・追切 × ④対抗・穴攻め馬券＆𝕏共有 ]
         </p>
 
         {/* STEP 1 */}
@@ -875,7 +990,7 @@ export default function Home() {
               value={raceId}
               onChange={(e) => setRaceId(e.target.value)}
               className="w-full bg-gray-900 text-white rounded-lg p-3 md:p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600 font-mono text-lg"
-              placeholder="例: 202608040911"
+              placeholder="例: 202605041111"
             />
           </div>
           <button
@@ -919,7 +1034,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* 自動判定ステータスバー */}
           {autoStatus && (
             <div className="mb-6 grid grid-cols-1 gap-2 bg-gray-950 p-3.5 rounded-xl border border-gray-700 text-xs">
               {autoStatus.odds_message && (
@@ -1008,7 +1122,7 @@ export default function Home() {
             </div>
             <div className="col-span-2 md:col-span-1">
               <label className="text-[10px] md:text-xs text-emerald-400 font-bold block mb-1">
-                クッション値
+                クッション値 (9.5以上で高速上がり重視)
               </label>
               <input
                 type="number"
@@ -1016,7 +1130,7 @@ export default function Home() {
                 value={cushionValue}
                 onChange={(e) => setCushionValue(Number(e.target.value))}
                 className="w-full bg-emerald-950 text-white font-bold rounded p-2 border border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm md:text-base"
-                placeholder="例: 10.6"
+                placeholder="例: 9.9"
               />
             </div>
           </div>
@@ -1254,7 +1368,7 @@ export default function Home() {
             >
               {isDiagnosing
                 ? '分析中...'
-                : '📊 第2段階：枠・バイアス・ローテ・追切・道悪を加味して最終診断 ＆ 推奨馬券出力！'}
+                : '📊 第2段階：枠・バイアス・ローテ・追切・高速上がりを加味して最終診断 ＆ 推奨馬券出力！'}
             </button>
           </div>
         </div>
@@ -1319,10 +1433,10 @@ export default function Home() {
             {bettingTickets && (
               <div className="mb-8 bg-gray-950 border-2 border-indigo-500/70 rounded-xl p-4 md:p-6 shadow-xl">
                 <h3 className="text-base md:text-lg font-extrabold text-yellow-400 mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
-                  🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 軸飛び防御買い目
+                  🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 対抗・穴攻め買い目
                 </h3>
 
-                {/* ★新機能: AI予想印（◎〇▲☆△）一覧 ＆ 𝕏ワンタップ共有パネル */}
+                {/* AI予想印（◎〇▲☆△）一覧 ＆ 𝕏ワンタップ共有パネル */}
                 {marksSummary && (
                   <div className="mb-6 bg-gray-900 border border-sky-500/60 rounded-xl p-4 shadow-lg">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-gray-800 pb-2.5 mb-3">
@@ -1334,7 +1448,6 @@ export default function Home() {
                       </span>
                     </div>
 
-                    {/* 画面確認用の印一覧（馬番＋馬名） */}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4 text-xs">
                       {marksSummary.honmei && (
                         <div className="bg-red-950/50 border border-red-500/70 rounded-lg p-2.5">
@@ -1388,7 +1501,6 @@ export default function Home() {
                       )}
                     </div>
 
-                    {/* Xポスト用テキストエリア（馬名なし）＆ 投稿ボタン */}
                     <div className="flex flex-col md:flex-row gap-3 items-stretch">
                       <textarea
                         value={xPostText}
@@ -1414,7 +1526,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* アプローチ⑤: 軸信頼度ジャッジバナー */}
+                {/* 軸信頼度ジャッジバナー */}
                 {axisDefensePlan && (
                   <div
                     className={`mb-5 p-3.5 md:p-4 rounded-xl border-2 ${
@@ -1692,72 +1804,149 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* アプローチ⑤: ⑧タテ目保険3連複BOX ＆ ⑨頭逆転フォーメーション */}
+                  {/* ⑧タテ目保険3連複BOX ＆ ⑨対抗・地力上位 頭逆転3連単 ＆ ⑩対抗・穴から狙う攻めの馬券 */}
                   {axisDefensePlan && (
-                    <div className="md:col-span-2 bg-gradient-to-r from-rose-950/70 via-amber-950/50 to-gray-900 border-2 border-rose-500/80 rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <div className="flex justify-between items-center font-extrabold text-rose-300 border-b border-rose-700/70 pb-1.5 mb-2">
-                          <span>⑧ 【軸飛び・タテ目保険】相手上位 3連複BOX</span>
-                          <span className="text-xs bg-rose-600 text-white font-black px-2.5 py-0.5 rounded">
-                            計 {axisDefensePlan.tatemeBoxCount} 点
-                          </span>
-                        </div>
-                        <div className="text-xs space-y-1">
-                          <div className="font-mono font-bold text-white">
-                            BOX対象 ({axisDefensePlan.tatemeBoxTargets.length}頭):{' '}
-                            <span className="text-rose-300 font-extrabold">
-                              {axisDefensePlan.tatemeBoxTargets
-                                .map((t) => `${t.umaban}番`)
-                                .join(', ')}
+                    <div className="md:col-span-2 bg-gradient-to-r from-rose-950/70 via-amber-950/50 to-gray-900 border-2 border-rose-500/80 rounded-lg p-4 flex flex-col gap-5">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <div className="flex justify-between items-center font-extrabold text-rose-300 border-b border-rose-700/70 pb-1.5 mb-2">
+                            <span>⑧ 【軸飛び・タテ目保険】相手上位 3連複BOX</span>
+                            <span className="text-xs bg-rose-600 text-white font-black px-2.5 py-0.5 rounded">
+                              計 {axisDefensePlan.tatemeBoxCount} 点
                             </span>
                           </div>
-                          <div className="text-[11px] text-gray-300">
-                            内訳:{' '}
-                            {axisDefensePlan.tatemeBoxTargets
-                              .map((t) => `${t.umaban}${t.bamei}(${t.odds}倍)`)
-                              .join(' / ')}
+                          <div className="text-xs space-y-1">
+                            <div className="font-mono font-bold text-white">
+                              BOX対象 ({axisDefensePlan.tatemeBoxTargets.length}頭):{' '}
+                              <span className="text-rose-300 font-extrabold">
+                                {axisDefensePlan.tatemeBoxTargets
+                                  .map((t) => `${t.umaban}番`)
+                                  .join(', ')}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-gray-300">
+                              内訳:{' '}
+                              {axisDefensePlan.tatemeBoxTargets
+                                .map((t) => `${t.umaban}${t.bamei}(${t.odds}倍)`)
+                                .join(' / ')}
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[11px] text-rose-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
+                            {axisDefensePlan.tatemeBoxCombos.join(' / ')}
+                          </div>
+                          <div className="mt-1 text-[10px] text-gray-400">
+                            ※1着軸が馬群に包まれる等で飛んだ際、対抗・地力救済・特注穴同士で決まる高配当タテ目を拾う保険BOXです。
                           </div>
                         </div>
-                        <div className="mt-2 text-[11px] text-rose-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
-                          {axisDefensePlan.tatemeBoxCombos.join(' / ')}
-                        </div>
-                        <div className="mt-1 text-[10px] text-gray-400">
-                          ※万が一1着軸が馬券外に飛んだ際、2列目・3列目の実力馬同士で決着する高配当タテ目を完全に拾う保険BOXです。
+
+                        <div>
+                          <div className="flex justify-between items-center font-extrabold text-amber-300 border-b border-amber-700/70 pb-1.5 mb-2">
+                            <span>⑨ 【対抗・地力上位 頭逆転】3連単フォーメーション</span>
+                            <span className="text-xs bg-amber-500 text-gray-950 font-black px-2.5 py-0.5 rounded">
+                              計 {axisDefensePlan.reverseCount} 点
+                            </span>
+                          </div>
+                          <div className="font-mono text-xs space-y-1">
+                            <div>
+                              1着(対抗＋地力TOP3救済):{' '}
+                              <span className="text-pink-300 font-extrabold">
+                                {axisDefensePlan.reverseFirst.join(', ')}番
+                              </span>
+                            </div>
+                            <div>
+                              2着(本命＋対抗＋特注穴):{' '}
+                              <span className="text-yellow-300 font-extrabold">
+                                {axisDefensePlan.reverseSecond.join(', ')}番
+                              </span>
+                            </div>
+                            <div>
+                              3着(本命＋本線＋救済):{' '}
+                              <span className="text-emerald-300 font-extrabold">
+                                {axisDefensePlan.reverseThird.join(', ')}番
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[11px] text-amber-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
+                            {axisDefensePlan.reverseCombos.join(' / ')}
+                          </div>
+                          <div className="mt-1 text-[10px] text-gray-400">
+                            ※外枠等で減点された『地力TOP3馬』や『対抗馬』が1着に突き抜け、2着に穴馬や本命が入る波乱決着まで網羅します。
+                          </div>
                         </div>
                       </div>
 
-                      <div>
-                        <div className="flex justify-between items-center font-extrabold text-amber-300 border-b border-amber-700/70 pb-1.5 mb-2">
-                          <span>⑨ 【頭逆転ケア】2列目1着 ➔ 本命2着 3連単</span>
-                          <span className="text-xs bg-amber-500 text-gray-950 font-black px-2.5 py-0.5 rounded">
-                            計 {axisDefensePlan.reverseCount} 点
+                      {/* ★新設⑩：対抗・穴から狙う攻めの馬券（3連複フォーメーション ＆ 穴ワイド） */}
+                      <div className="border-t border-rose-800/70 pt-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 mb-3">
+                          <span className="text-sm font-black text-cyan-300">
+                            ⑩ 【対抗・特注穴から狙う高配当馬券】本命包まれ・ヒモ荒れ狙い撃ちプラン
+                          </span>
+                          <span className="text-[11px] text-gray-300">
+                            ※1番人気・本命軸(◎)を1列目から外し、対抗(〇)・地力上位・妙味穴(☆)を軸に据える高回収率仕様
                           </span>
                         </div>
-                        <div className="font-mono text-xs space-y-1">
-                          <div>
-                            1着(相手本線上位):{' '}
-                            <span className="text-pink-300 font-extrabold">
-                              {axisDefensePlan.reverseFirst.join(', ')}番
-                            </span>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="bg-gray-950/80 border border-cyan-600/60 rounded-lg p-3">
+                            <div className="flex justify-between items-center font-extrabold text-cyan-300 border-b border-gray-800 pb-1 mb-2">
+                              <span>🔥 対抗・地力・穴軸 3連複フォーメーション</span>
+                              <span className="text-xs bg-cyan-600 text-white font-black px-2 py-0.5 rounded">
+                                計 {axisDefensePlan.anaFormCount} 点
+                              </span>
+                            </div>
+                            <div className="font-mono text-xs space-y-1">
+                              <div>
+                                1列目(対抗・地力救済・特注):{' '}
+                                <span className="text-cyan-300 font-extrabold">
+                                  {axisDefensePlan.anaFormRow1.join(', ')}番
+                                </span>
+                              </div>
+                              <div>
+                                2列目(1列目＋妙味上位穴):{' '}
+                                <span className="text-pink-300 font-extrabold">
+                                  {axisDefensePlan.anaFormRow2.join(', ')}番
+                                </span>
+                              </div>
+                              <div>
+                                3列目(本命◎＋相手全頭):{' '}
+                                <span className="text-emerald-300 font-extrabold">
+                                  {axisDefensePlan.anaFormRow3.join(', ')}番
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-2 text-[11px] text-cyan-100 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
+                              {axisDefensePlan.anaFormCombos.join(' / ')}
+                            </div>
                           </div>
-                          <div>
-                            2着(本命軸):{' '}
-                            <span className="text-yellow-300 font-extrabold">
-                              {axisDefensePlan.reverseSecond.join(', ')}番
-                            </span>
+
+                          <div className="bg-gray-950/80 border border-pink-600/60 rounded-lg p-3">
+                            <div className="flex justify-between items-center font-extrabold text-pink-300 border-b border-gray-800 pb-1 mb-2">
+                              <span>💣 対抗・地力上位 ➔ 妙味穴 ワイドフォーメーション</span>
+                              <span className="text-xs bg-pink-600 text-white font-black px-2 py-0.5 rounded">
+                                計 {axisDefensePlan.anaWideCount} 点
+                              </span>
+                            </div>
+                            <div className="font-mono text-xs space-y-1">
+                              <div>
+                                軸(対抗1番手・地力TOP3救済):{' '}
+                                <span className="text-yellow-300 font-extrabold">
+                                  {axisDefensePlan.anaWideAxes.join(', ')}番
+                                </span>
+                              </div>
+                              <div>
+                                狙い穴(特注☆・妙味上位・救済):{' '}
+                                <span className="text-pink-300 font-extrabold">
+                                  {axisDefensePlan.anaWideTargets.join(', ')}番
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-2 text-[11px] text-pink-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
+                              {axisDefensePlan.anaWideCombos.join(' / ')}
+                            </div>
+                            <div className="mt-1 text-[10px] text-gray-400">
+                              ※低オッズの本命ワイドを避け、実力対抗馬・地力救済馬と妙味穴馬の組み合わせで高配当ワイドを狙い撃ちます。
+                            </div>
                           </div>
-                          <div>
-                            3着(ヒモ):{' '}
-                            <span className="text-emerald-300 font-extrabold">
-                              {axisDefensePlan.reverseThird.join(', ')}番
-                            </span>
-                          </div>
-                        </div>
-                        <div className="mt-2 text-[11px] text-amber-200 font-mono bg-black/40 p-2 rounded max-h-16 overflow-y-auto">
-                          {axisDefensePlan.reverseCombos.join(' / ')}
-                        </div>
-                        <div className="mt-1 text-[10px] text-gray-400">
-                          ※2列目本線の馬が勝ち切り、1着軸が2着に惜敗するパターンを最小点数で押さえる逆転フォーメーションです。
                         </div>
                       </div>
                     </div>
