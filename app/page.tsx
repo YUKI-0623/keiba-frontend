@@ -235,9 +235,6 @@ interface VenueProfile {
   slopeZones: { startLap: number; endLap: number; label: string; type: 'UP' | 'DOWN' }[];
 }
 
-/**
- * 主要5場（東京・中山・京都・阪神・中京）のコース形状・高低差プロファイル
- */
 const VENUE_PROFILES: Record<string, VenueProfile> = {
   東京: {
     dir: 'LEFT',
@@ -1231,6 +1228,7 @@ export default function Home() {
 
   const [simRunId, setSimRunId] = useState(0);
   const animFrameRef = useRef<number | null>(null);
+  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const marksSummary = buildHorseMarksAndPostText(
     diagnosisResults,
@@ -1251,14 +1249,21 @@ export default function Home() {
     customDirOverride === 'AUTO' ? venueProfile.dir : customDirOverride;
   const startConfig = resolveStartConfig(activeVenueKey, courseType, distance, customStartMode);
 
+  /**
+   * ★修正済み: 依存配列にオブジェクト参照(startConfig/venueProfile)を含めずプリミティブ値のみを監視させることで、
+   * 毎フレームの再レンダリングでアニメーションが0秒にリセットされるバグを完全解消
+   */
   useEffect(() => {
     if (!isRacing || !results || results.length === 0) {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
       return;
     }
 
+    const vProf = getVenueProfile(activeVenueKey);
+    const sConf = resolveStartConfig(activeVenueKey, courseType, distance, customStartMode);
+    const { resolvedMode, startLabel, startLapPos, totalLaps } = sConf;
     const totalH = results.length;
-    const { resolvedMode, startLapPos, totalLaps } = startConfig;
 
     const horseProfiles = results.map((r) => {
       const hInput = horses.find((h) => h.umaban === r.umaban);
@@ -1342,11 +1347,11 @@ export default function Home() {
       };
     });
 
-    const totalDurationMs = 14200;
+    const totalDurationMs = 13500;
     const startTime = performance.now();
 
     const step = (now: number) => {
-      const elapsed = now - startTime;
+      const elapsed = Math.max(0, now - startTime);
       const t = Math.min(1.0, elapsed / totalDurationMs);
       setSimProgress(t);
 
@@ -1359,12 +1364,12 @@ export default function Home() {
         4
       );
       const leadLapPos = ((leadPosInfo.lapPosForElev % 1) + 1) % 1;
-      const activeSlope = venueProfile.slopeZones.find(
+      const activeSlope = vProf.slopeZones.find(
         (z) => leadLapPos >= z.startLap && leadLapPos <= z.endLap
       );
 
       if (t < 0.14) {
-        setSimPhaseLabel(`🚪 スタート（${startConfig.startLabel}）＆ 先行争い`);
+        setSimPhaseLabel(`🚪 スタート（${startLabel}）＆ 先行争い`);
       } else if (t < 0.45) {
         setSimPhaseLabel(
           activeSlope
@@ -1381,7 +1386,7 @@ export default function Home() {
         setSimPhaseLabel(
           activeSlope
             ? `⚡ 最後の直線・末脚勝負！ ［${activeSlope.label}］`
-            : `⚡ 最後の直線（${venueProfile.straightMeter}m）・全馬スパート！`
+            : `⚡ 最後の直線（${vProf.straightMeter}m）・全馬スパート！`
         );
       } else {
         setSimPhaseLabel('🏁 ゴールイン！（写真判定・着順確定）');
@@ -1443,9 +1448,9 @@ export default function Home() {
       if (t < 1.0) {
         animFrameRef.current = requestAnimationFrame(step);
       } else {
-        setTimeout(() => {
+        resultTimerRef.current = setTimeout(() => {
           setShowResults(true);
-        }, 650);
+        }, 600);
       }
     };
 
@@ -1453,17 +1458,19 @@ export default function Home() {
 
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
     };
   }, [
     isRacing,
     simRunId,
     results,
+    activeVenueKey,
+    courseType,
     distance,
     expectedPace,
-    horses,
-    venueProfile,
     effectiveDir,
-    startConfig,
+    customStartMode,
+    horses,
   ]);
 
   const handleCopyPostText = async () => {
@@ -1631,6 +1638,10 @@ export default function Home() {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
+    }
+    if (resultTimerRef.current) {
+      clearTimeout(resultTimerRef.current);
+      resultTimerRef.current = null;
     }
     setIsRacing(false);
     setShowResults(false);
@@ -3050,7 +3061,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* シミュレーションモーダル（主要5場：東京・中山・京都・阪神・中京 専用レイアウト） */}
+        {/* シミュレーションモーダル */}
         {isRacing && results && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-2 md:p-4">
             <div className="relative w-full max-w-5xl max-h-[96vh] overflow-y-auto bg-gray-900 rounded-2xl border border-gray-600 shadow-2xl p-3 md:p-5">
@@ -3059,6 +3070,10 @@ export default function Home() {
                   if (animFrameRef.current) {
                     cancelAnimationFrame(animFrameRef.current);
                     animFrameRef.current = null;
+                  }
+                  if (resultTimerRef.current) {
+                    clearTimeout(resultTimerRef.current);
+                    resultTimerRef.current = null;
                   }
                   setIsRacing(false);
                   setShowResults(false);
