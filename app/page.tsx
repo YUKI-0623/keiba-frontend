@@ -213,6 +213,328 @@ interface RaceResult {
   rank: number;
 }
 
+interface VenueProfile {
+  dir: 'LEFT' | 'RIGHT';
+  straightMeter: number;
+  elevationDiff: number;
+  lapMeter: number;
+  slopeTitle: string;
+  featureText: string;
+  /** 1周(0.0=ゴール地点〜1.0=ゴール地点)における標高プロファイル(m) */
+  getElevationAtLapPos: (lapPos: number) => number;
+  slopeZones: { startLap: number; endLap: number; label: string; type: 'UP' | 'DOWN' }[];
+}
+
+const VENUE_PROFILES: Record<string, VenueProfile> = {
+  東京: {
+    dir: 'LEFT',
+    straightMeter: 525.9,
+    elevationDiff: 2.7,
+    lapMeter: 2083,
+    slopeTitle: '直線だんだん坂 (高低差2.1m)',
+    featureText:
+      '左回り・直線525.9m。向正面後半に緩い下りがあり、直線残り450m〜300mにかけて高低差2.1mの「だんだん坂」を上るロングスパートコース。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.25) return 1.2;
+      if (p < 0.48) return 1.2 + Math.sin(((p - 0.25) / 0.23) * Math.PI) * 0.8;
+      if (p < 0.72) return Math.max(0, 1.2 - ((p - 0.48) / 0.24) * 1.2);
+      if (p < 0.86) return ((p - 0.72) / 0.14) * 2.3;
+      return 2.3;
+    },
+    slopeZones: [
+      { startLap: 0.52, endLap: 0.68, label: '3角手前下り', type: 'DOWN' },
+      { startLap: 0.75, endLap: 0.86, label: 'だんだん坂(上り2.1m)', type: 'UP' },
+    ],
+  },
+  中山: {
+    dir: 'RIGHT',
+    straightMeter: 310.0,
+    elevationDiff: 5.3,
+    lapMeter: 1667,
+    slopeTitle: 'ゴール前急坂 (高低差2.2m・勾配2.24%)',
+    featureText:
+      '右回り・直線310m。1〜2角が最高所で向正面にかけて5.3m下り、ゴール前残り180mにJRA最大勾配(2.24%)の名物急坂が待ち受けるタフコース。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.22) return 3.2 + (p / 0.22) * 2.1;
+      if (p < 0.68) return 5.3 - ((p - 0.22) / 0.46) * 5.3;
+      if (p < 0.86) return 0.2;
+      return 0.2 + ((p - 0.86) / 0.14) * 2.4;
+    },
+    slopeZones: [
+      { startLap: 0.3, endLap: 0.65, label: '向正面〜3角長い下り', type: 'DOWN' },
+      { startLap: 0.86, endLap: 0.98, label: '名物・直線急坂(2.2m)', type: 'UP' },
+    ],
+  },
+  京都: {
+    dir: 'RIGHT',
+    straightMeter: 403.7,
+    elevationDiff: 4.3,
+    lapMeter: 1894,
+    slopeTitle: '3角「淀の坂」上り下り (高低差4.3m)',
+    featureText:
+      '右回り・直線404m。向正面半ばから3コーナーにかけて高低差4.3mの「淀の坂」を上り、4角へ一気に駆け下りて平坦直線へ入るスピード持続コース。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.35) return 0.3;
+      if (p < 0.56) return 0.3 + ((p - 0.35) / 0.21) * 4.0;
+      if (p < 0.74) return 4.3 - ((p - 0.56) / 0.18) * 4.0;
+      return 0.3;
+    },
+    slopeZones: [
+      { startLap: 0.38, endLap: 0.56, label: '淀の坂(上り4.3m)', type: 'UP' },
+      { startLap: 0.56, endLap: 0.73, label: '3〜4角急下り', type: 'DOWN' },
+    ],
+  },
+  阪神: {
+    dir: 'RIGHT',
+    straightMeter: 473.6,
+    elevationDiff: 2.4,
+    lapMeter: 2089,
+    slopeTitle: '直線急坂 (高低差1.8m・勾配1.5%)',
+    featureText:
+      '右回り・外回り直線473.6m。3〜4角から直線半ばまで緩やかに下り、残り200mで高低差1.8mの急坂を一気に駆け上がる総合力コース。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.55) return 1.8;
+      if (p < 0.85) return 1.8 - ((p - 0.55) / 0.3) * 1.8;
+      return ((p - 0.85) / 0.15) * 1.9;
+    },
+    slopeZones: [
+      { startLap: 0.58, endLap: 0.83, label: '3〜4角ロング下り', type: 'DOWN' },
+      { startLap: 0.86, endLap: 0.98, label: 'ゴール前急坂(1.8m)', type: 'UP' },
+    ],
+  },
+  中京: {
+    dir: 'LEFT',
+    straightMeter: 412.5,
+    elevationDiff: 3.5,
+    lapMeter: 1705,
+    slopeTitle: 'スパイラルカーブ＆直線急坂 (高低差2.0m)',
+    featureText:
+      '左回り・直線412.5m。向正面半ばから3〜4角のスパイラルカーブまで下り続け、直線入り口に高低差2.0m(勾配2.0%)の急坂がそびえるタフコース。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.42) return 1.8 + (p / 0.42) * 1.7;
+      if (p < 0.74) return 3.5 - ((p - 0.42) / 0.32) * 3.5;
+      if (p < 0.88) return ((p - 0.74) / 0.14) * 2.0;
+      return 2.0;
+    },
+    slopeZones: [
+      { startLap: 0.45, endLap: 0.73, label: '3〜4角スパイラル下り', type: 'DOWN' },
+      { startLap: 0.75, endLap: 0.88, label: '直線入り口急坂(2.0m)', type: 'UP' },
+    ],
+  },
+  新潟: {
+    dir: 'LEFT',
+    straightMeter: 658.7,
+    elevationDiff: 2.2,
+    lapMeter: 2223,
+    slopeTitle: '日本最長659m平坦直線',
+    featureText:
+      '左回り・外回り直線658.7m。向正面に緩やかな起伏があるのみで、長い直線はほぼ完全平坦の極限トップスピード・瞬発力勝負コース。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.35) return 0.5;
+      if (p < 0.55) return 0.5 + ((p - 0.35) / 0.2) * 1.7;
+      if (p < 0.7) return 2.2 - ((p - 0.55) / 0.15) * 1.7;
+      return 0.5;
+    },
+    slopeZones: [
+      { startLap: 0.36, endLap: 0.54, label: '向正面緩い上り', type: 'UP' },
+      { startLap: 0.55, endLap: 0.7, label: '3角緩い下り', type: 'DOWN' },
+    ],
+  },
+  札幌: {
+    dir: 'RIGHT',
+    straightMeter: 266.1,
+    elevationDiff: 0.7,
+    lapMeter: 1641,
+    slopeTitle: '全場最小高低差0.7m・大回り平坦洋芝',
+    featureText:
+      '右回り・直線266.1m。高低差わずか0.7mの完全フラットな洋芝コース。コーナー半径が大きく、3〜4角からのロングスパート・まくりが決まりやすい。',
+    getElevationAtLapPos: (p) => 0.4 + Math.sin(p * Math.PI * 2) * 0.3,
+    slopeZones: [],
+  },
+  函館: {
+    dir: 'RIGHT',
+    straightMeter: 262.1,
+    elevationDiff: 3.5,
+    lapMeter: 1626,
+    slopeTitle: '向正面〜3角上り坂 (高低差3.5m)',
+    featureText:
+      '右回り・JRA最短直線262.1mの洋芝コース。向正面から3角にかけて3.5m上り、4角から直線にかけて下るため早め進出の持続力が問われる。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.25) return 0.4;
+      if (p < 0.58) return 0.4 + ((p - 0.25) / 0.33) * 3.1;
+      if (p < 0.82) return 3.5 - ((p - 0.58) / 0.24) * 2.8;
+      return 0.7;
+    },
+    slopeZones: [
+      { startLap: 0.28, endLap: 0.58, label: '向正面〜3角タフ上り', type: 'UP' },
+      { startLap: 0.59, endLap: 0.8, label: '4角下り坂', type: 'DOWN' },
+    ],
+  },
+  福島: {
+    dir: 'RIGHT',
+    straightMeter: 292.0,
+    elevationDiff: 1.9,
+    lapMeter: 1600,
+    slopeTitle: 'スパイラルカーブ＆ゴール前上り坂',
+    featureText:
+      '右回り・小回り1600m（直線292m）。向正面とゴール前に二段階の上り坂があり、3〜4角のスパイラルカーブでまくりが頻発するコース。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.3) return 0.6;
+      if (p < 0.5) return 0.6 + ((p - 0.3) / 0.2) * 1.2;
+      if (p < 0.82) return 1.8 - ((p - 0.5) / 0.32) * 1.4;
+      return 0.4 + ((p - 0.82) / 0.18) * 1.2;
+    },
+    slopeZones: [
+      { startLap: 0.32, endLap: 0.5, label: '向正面上り', type: 'UP' },
+      { startLap: 0.84, endLap: 0.98, label: '直線緩い上り', type: 'UP' },
+    ],
+  },
+  小倉: {
+    dir: 'RIGHT',
+    straightMeter: 293.0,
+    elevationDiff: 3.0,
+    lapMeter: 1615,
+    slopeTitle: '2角頂上から3〜4角下り＆平坦直線',
+    featureText:
+      '右回り・直線293m。1〜2角で3.0m上った後、向正面から4角までずっと下り坂が続き、直線は完全平坦のため前半からハイペースになりやすい。',
+    getElevationAtLapPos: (p) => {
+      if (p < 0.24) return 0.5 + (p / 0.24) * 2.5;
+      if (p < 0.72) return 3.0 - ((p - 0.24) / 0.48) * 2.7;
+      return 0.3;
+    },
+    slopeZones: [
+      { startLap: 0.05, endLap: 0.24, label: '1〜2角上り坂', type: 'UP' },
+      { startLap: 0.28, endLap: 0.7, label: '向正面〜4角ロング下り', type: 'DOWN' },
+    ],
+  },
+};
+
+function getVenueProfile(placeName: string): VenueProfile {
+  for (const key of Object.keys(VENUE_PROFILES)) {
+    if (placeName.includes(key)) return VENUE_PROFILES[key];
+  }
+  return VENUE_PROFILES['東京'];
+}
+
+/**
+ * トラック周回位置 (lapPos: 0.0=ゴール地点 〜 1.0=1周後のゴール地点) と
+ * 内外レーンオフセット (laneOffsetPx: 0=最内ラチ沿い 〜 +26=大外) から
+ * SVG上の (x, y) 座標と進行方向角度を算出する関数
+ *
+ * 【コース図の向き】
+ * - 手前（下側 y=240）が常に「スタンド前直線（ホームストレッチ）」
+ * - 奥（上側 y=64）が常に「向正面（バックストレッチ）」
+ * - 左回り（LEFT: 東京・新潟・中京）: スタンド前を右→左へ走り、左端寄りのゴール板へ（反時計回り）
+ * - 右回り（RIGHT: 中山・京都・阪神等）: スタンド前を左→右へ走り、右端寄りのゴール板へ（時計回り）
+ */
+function getTrackPointAndNormal(
+  lapPosRaw: number,
+  dir: 'LEFT' | 'RIGHT',
+  laneOffsetPx: number
+): { x: number; y: number } {
+  const u = ((lapPosRaw % 1) + 1) % 1;
+
+  // トラック基本ジオメトリ: 中心(400, 152), 直線長さ L=380 (x=210..590), コーナー半径 R=88 (y=64..240)
+  const L = 380;
+  const R = 88;
+  const arcLen = Math.PI * R; // 約276.46
+  const totalPerim = 2 * L + 2 * arcLen; // 約1312.92
+
+  // ゴール板をホームストレッチの終端近く（直線残り75%地点）に設定
+  // ホームストレッチ開始点(4角出口)を s=0 とすると、ゴール板は sGoal = L * 0.78 = 296.4
+  const sGoal = L * 0.78;
+  const s = (sGoal + u * totalPerim) % totalPerim;
+
+  let baseX = 400;
+  let baseY = 240;
+  let outNx = 0;
+  let outNy = 1;
+
+  if (dir === 'RIGHT') {
+    // 右回り（時計回り）:
+    // s=0..L: 下側直線 (x: 210 -> 590, y: 240) 外側は下(+y)
+    // s=L..L+arcLen: 右コーナー(1〜2角) 中心(590, 152), 角度 +90度(π/2) -> -90度(-π/2)
+    // s=L+arcLen..2L+arcLen: 上側向正面 (x: 590 -> 210, y: 64) 外側は上(-y)
+    // s=2L+arcLen..total: 左コーナー(3〜4角) 中心(210, 152), 角度 -90度(-π/2) -> +90度(π/2)
+    if (s < L) {
+      baseX = 210 + s;
+      baseY = 240;
+      outNx = 0;
+      outNy = 1;
+    } else if (s < L + arcLen) {
+      const ratio = (s - L) / arcLen;
+      const theta = Math.PI / 2 - ratio * Math.PI;
+      baseX = 590 + R * Math.cos(theta);
+      baseY = 152 + R * Math.sin(theta);
+      outNx = Math.cos(theta);
+      outNy = Math.sin(theta);
+    } else if (s < 2 * L + arcLen) {
+      const d = s - (L + arcLen);
+      baseX = 590 - d;
+      baseY = 64;
+      outNx = 0;
+      outNy = -1;
+    } else {
+      const ratio = (s - (2 * L + arcLen)) / arcLen;
+      const theta = -Math.PI / 2 - ratio * Math.PI;
+      baseX = 210 + R * Math.cos(theta);
+      baseY = 152 + R * Math.sin(theta);
+      outNx = Math.cos(theta);
+      outNy = Math.sin(theta);
+    }
+  } else {
+    // 左回り（反時計回り）:
+    // s=0..L: 下側直線 (x: 590 -> 210, y: 240) 外側は下(+y)
+    // s=L..L+arcLen: 左コーナー(1〜2角) 中心(210, 152), 角度 +90度(π/2) -> +270度(3π/2)
+    // s=L+arcLen..2L+arcLen: 上側向正面 (x: 210 -> 590, y: 64) 外側は上(-y)
+    // s=2L+arcLen..total: 右コーナー(3〜4角) 中心(590, 152), 角度 -90度(-π/2) -> +90度(π/2)
+    if (s < L) {
+      baseX = 590 - s;
+      baseY = 240;
+      outNx = 0;
+      outNy = 1;
+    } else if (s < L + arcLen) {
+      const ratio = (s - L) / arcLen;
+      const theta = Math.PI / 2 + ratio * Math.PI;
+      baseX = 210 + R * Math.cos(theta);
+      baseY = 152 + R * Math.sin(theta);
+      outNx = Math.cos(theta);
+      outNy = Math.sin(theta);
+    } else if (s < 2 * L + arcLen) {
+      const d = s - (L + arcLen);
+      baseX = 210 + d;
+      baseY = 64;
+      outNx = 0;
+      outNy = -1;
+    } else {
+      const ratio = (s - (2 * L + arcLen)) / arcLen;
+      const theta = -Math.PI / 2 + ratio * Math.PI;
+      baseX = 590 + R * Math.cos(theta);
+      baseY = 152 + R * Math.sin(theta);
+      outNx = Math.cos(theta);
+      outNy = Math.sin(theta);
+    }
+  }
+
+  return {
+    x: baseX + outNx * laneOffsetPx,
+    y: baseY + outNy * laneOffsetPx,
+  };
+}
+
+interface SimHorseTrackState {
+  umaban: number;
+  bamei: string;
+  rank: number;
+  kyakushitsu: number;
+  isMakuriHorse: boolean;
+  x: number;
+  y: number;
+  currentProgress: number;
+  isMakuriActiveNow: boolean;
+  isSpurtActiveNow: boolean;
+}
+
 const PACE_SCENARIOS: Record<
   string,
   {
@@ -761,7 +1083,7 @@ export default function Home() {
   const [fetching, setFetching] = useState(false);
 
   const [targetRaceName, setTargetRaceName] = useState('');
-  const [targetPlace, setTargetPlace] = useState('');
+  const [targetPlace, setTargetPlace] = useState('東京');
   const [courseRpci, setCourseRpci] = useState<number | null>(null);
   const [courseRpciType, setCourseRpciType] = useState<string>('');
   const [referenceBenchmarks, setReferenceBenchmarks] = useState<ReferenceBenchmarks | null>(null);
@@ -824,20 +1146,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [isRacing, setIsRacing] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [simProgress, setSimProgress] = useState(0);
+  const [simHorseStates, setSimHorseStates] = useState<SimHorseTrackState[]>([]);
+  const [simPhaseLabel, setSimPhaseLabel] = useState('');
 
   const [simRunId, setSimRunId] = useState(0);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (isRacing && svgRef.current) {
-      try {
-        svgRef.current.setCurrentTime(0);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-  }, [isRacing, simRunId]);
+  const animFrameRef = useRef<number | null>(null);
 
   const marksSummary = buildHorseMarksAndPostText(
     diagnosisResults,
@@ -851,6 +1165,221 @@ export default function Home() {
       setXPostText(marksSummary.postText);
     }
   }, [marksSummary?.postText]);
+
+  const venueProfile = getVenueProfile(targetPlace || '東京');
+
+  /**
+   * ★新エンジン: 60fps リアルタイム隊列・まくり・コース起伏連動シミュレーション
+   */
+  useEffect(() => {
+    if (!isRacing || !results || results.length === 0) {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      return;
+    }
+
+    const totalH = results.length;
+    const lapMeter = venueProfile.lapMeter || 1800;
+    const totalLaps = Math.max(0.55, distance / lapMeter);
+    const startLapPos = (((1.0 - (totalLaps % 1)) % 1) + 1) % 1;
+
+    // 各馬の脚質・まくり属性・レーン・区間ラッププロファイルを事前構築
+    const horseProfiles = results.map((r) => {
+      const hInput = horses.find((h) => h.umaban === r.umaban);
+      const kyaku = hInput ? Math.round(Number(hInput.kyakushitsu)) : 2;
+      const waku = hInput ? Number(hInput.wakuban || r.umaban) : r.umaban;
+
+      // 過去走履歴から「まくり実績（通過順で3頭以上まくった履歴）」を判定
+      let hasMakuriHistory = false;
+      const hist = hInput?.history_details || [];
+      for (const hd of hist) {
+        const pNums = String(hd.passing || '')
+          .split('-')
+          .map((x) => parseInt(x, 10))
+          .filter((n) => !isNaN(n));
+        if (pNums.length >= 2 && pNums[0] - pNums[pNums.length - 1] >= 3) {
+          hasMakuriHistory = true;
+          break;
+        }
+      }
+
+      // まくり発動条件: (まくり履歴あり or ロンスパ戦の差し・追込で上位5着以内 or 追込で3着以内)
+      const isMakuriHorse =
+        (hasMakuriHistory && kyaku >= 2 && r.rank <= 7) ||
+        ((expectedPace === 'S_LONSPA' || expectedPace === 'M_LONSPA') &&
+          kyaku === 3 &&
+          r.rank <= 4) ||
+        (kyaku === 4 && r.rank <= 2);
+
+      // 序盤・中盤の縦位置ラグ（0.0=先頭 〜 0.14=後方待機）
+      const seed = ((r.umaban * 17) % 10) / 1000;
+      const earlyLag =
+        kyaku === 1
+          ? 0.002 + seed * 1.5
+          : kyaku === 2
+            ? 0.025 + seed * 2.5
+            : kyaku === 3
+              ? 0.062 + seed * 3.0
+              : 0.098 + seed * 3.0;
+
+      // 勝負所(t=0.68)での位置ラグ（まくり馬はここで一気に先頭集団の直後まで進出！）
+      const midLag = isMakuriHorse
+        ? Math.max(0.008, earlyLag * 0.22)
+        : kyaku === 1
+          ? 0.002 + seed
+          : kyaku === 2
+            ? 0.022 + seed * 2.0
+            : kyaku === 3
+              ? 0.052 + seed * 2.5
+              : 0.082 + seed * 2.5;
+
+      // ゴール(t=1.0)での着差ラグ（1着馬が1.000に到達した瞬間、下位馬がどれだけ後ろにいるか）
+      const finishLag = (r.rank - 1) * 0.0052 + (r.rank > 5 ? (r.rank - 5) * 0.002 : 0);
+
+      // 内外のレーンオフセット（0px=内ラチ沿い 〜 24px=大外）
+      const wakuRatio = Math.max(0, Math.min(1, (waku - 1) / Math.max(1, totalH - 1)));
+      const startLane = 2 + wakuRatio * 20;
+      const cruiseLane =
+        kyaku === 1
+          ? 1.5 + (r.umaban % 2) * 3.0
+          : kyaku === 2
+            ? 3.5 + wakuRatio * 9.0
+            : kyaku === 3
+              ? 5.5 + wakuRatio * 12.0
+              : 4.5 + wakuRatio * 13.0;
+
+      // まくり時・直線時の外持ち出しレーン
+      const makuriLane = isMakuriHorse ? Math.min(25, cruiseLane + 11.0) : cruiseLane;
+      const straightLane =
+        r.rank <= 5 && kyaku >= 3
+          ? Math.min(26, Math.max(14, cruiseLane + 9.0))
+          : kyaku === 1
+            ? 2.0
+            : Math.min(22, cruiseLane + (r.rank % 3) * 2.5);
+
+      return {
+        umaban: r.umaban,
+        bamei: r.bamei,
+        rank: r.rank,
+        kyakushitsu: kyaku,
+        isMakuriHorse,
+        earlyLag,
+        midLag,
+        finishLag,
+        startLane,
+        cruiseLane,
+        makuriLane,
+        straightLane,
+      };
+    });
+
+    const totalDurationMs = 14200; // 約14.2秒でゴール、その後結果ポップアップ表示
+    const startTime = performance.now();
+
+    const step = (now: number) => {
+      const elapsed = now - startTime;
+      const t = Math.min(1.0, elapsed / totalDurationMs);
+      setSimProgress(t);
+
+      // 実況フェーズラベルの更新
+      const leadLapPos = (startLapPos + t * totalLaps) % 1;
+      const activeSlope = venueProfile.slopeZones.find(
+        (z) => leadLapPos >= z.startLap && leadLapPos <= z.endLap
+      );
+      if (t < 0.15) {
+        setSimPhaseLabel('🚪 スタート ＆ 先行争い・隊列形成');
+      } else if (t < 0.45) {
+        setSimPhaseLabel(
+          activeSlope
+            ? `⛰️ 向正面巡航 ［現在: ${activeSlope.label}］`
+            : '🐎 向正面（バックストレッチ）折り合い・隊列巡航'
+        );
+      } else if (t < 0.74) {
+        setSimPhaseLabel(
+          activeSlope
+            ? `🔥 3〜4コーナー勝負所・まくり進出 ［${activeSlope.label}］`
+            : '🔥 3〜4コーナー勝負所（後続まくり・ペースアップ！）'
+        );
+      } else if (t < 0.99) {
+        setSimPhaseLabel(
+          activeSlope
+            ? `⚡ 最後の直線・末脚勝負！ ［${activeSlope.label}］`
+            : `⚡ 最後の直線（${venueProfile.straightMeter}m）・全馬スパート！`
+        );
+      } else {
+        setSimPhaseLabel('🏁 ゴールイン！（写真判定・着順確定）');
+      }
+
+      // 各馬の瞬間位置とレーンを計算
+      const nextStates: SimHorseTrackState[] = horseProfiles.map((hp) => {
+        let p = 0;
+        const p1 = Math.max(0.02, 0.25 - hp.earlyLag * 0.65);
+        const p2 = Math.max(p1 + 0.05, 0.5 - hp.earlyLag);
+        const p3 = Math.max(p2 + 0.05, 0.74 - hp.midLag);
+        const p4 = 1.0 - hp.finishLag;
+
+        if (t <= 0.25) {
+          p = (t / 0.25) * p1;
+        } else if (t <= 0.5) {
+          p = p1 + ((t - 0.25) / 0.25) * (p2 - p1);
+        } else if (t <= 0.74) {
+          const local = (t - 0.5) / 0.24;
+          const eased = hp.isMakuriHorse ? Math.pow(local, 0.8) : local;
+          p = p2 + eased * (p3 - p2);
+        } else {
+          const local = (t - 0.74) / 0.26;
+          const spurtPower = hp.kyakushitsu >= 3 && hp.rank <= 3 ? Math.pow(local, 0.82) : local;
+          p = p3 + spurtPower * (p4 - p3);
+        }
+
+        // 内外レーン補間
+        let lane = hp.cruiseLane;
+        if (t < 0.2) {
+          const lRatio = t / 0.2;
+          lane = hp.startLane + (hp.cruiseLane - hp.startLane) * lRatio;
+        } else if (t < 0.48) {
+          lane = hp.cruiseLane;
+        } else if (t < 0.74) {
+          const lRatio = (t - 0.48) / 0.26;
+          lane = hp.cruiseLane + (hp.makuriLane - hp.cruiseLane) * lRatio;
+        } else {
+          const lRatio = Math.min(1, (t - 0.74) / 0.14);
+          lane = hp.makuriLane + (hp.straightLane - hp.makuriLane) * lRatio;
+        }
+
+        const horseLapPos = startLapPos + p * totalLaps;
+        const pt = getTrackPointAndNormal(horseLapPos, venueProfile.dir, lane);
+
+        return {
+          umaban: hp.umaban,
+          bamei: hp.bamei,
+          rank: hp.rank,
+          kyakushitsu: hp.kyakushitsu,
+          isMakuriHorse: hp.isMakuriHorse,
+          x: pt.x,
+          y: pt.y,
+          currentProgress: p,
+          isMakuriActiveNow: hp.isMakuriHorse && t >= 0.46 && t <= 0.78,
+          isSpurtActiveNow: hp.rank <= 3 && t >= 0.75 && t < 1.0,
+        };
+      });
+
+      setSimHorseStates(nextStates);
+
+      if (t < 1.0) {
+        animFrameRef.current = requestAnimationFrame(step);
+      } else {
+        setTimeout(() => {
+          setShowResults(true);
+        }, 650);
+      }
+    };
+
+    animFrameRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [isRacing, simRunId, results, distance, expectedPace, horses, venueProfile]);
 
   const handleCopyPostText = async () => {
     try {
@@ -919,11 +1448,11 @@ export default function Home() {
         setCushionValue(9.5);
 
         setTargetRaceName(data.race_name || '');
-        setTargetPlace(data.place_name || '');
+        setTargetPlace(data.place_name || '東京');
         setAutoStatus(data.auto_status || null);
 
         alert(
-          `${mappedHorses.length}頭の出馬表・過去5走履歴・前年/今年度タイム・環境データを取得しました！\n\n` +
+          `${mappedHorses.length}頭の出馬表・過去5走履歴・前年/今年度タイム・コース起伏データを取得しました！\n\n` +
             `${data.auto_status?.odds_message || ''}\n\n` +
             `${data.auto_status?.pace_message || ''}\n\n` +
             `${data.auto_status?.bias_message || ''}\n\n` +
@@ -1012,12 +1541,13 @@ export default function Home() {
   };
 
   const handleSimulate = async () => {
-    if (resultTimerRef.current) {
-      clearTimeout(resultTimerRef.current);
-      resultTimerRef.current = null;
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
     }
     setIsRacing(false);
     setShowResults(false);
+    setSimProgress(0);
     setLoading(true);
 
     try {
@@ -1043,9 +1573,6 @@ export default function Home() {
       setResults(data.ranking);
       setSimRunId((prev) => prev + 1);
       setIsRacing(true);
-      resultTimerRef.current = setTimeout(() => {
-        setShowResults(true);
-      }, 12500);
     } catch (error) {
       console.error(error);
       alert('エラーが発生しました。');
@@ -1155,6 +1682,30 @@ export default function Home() {
     </div>
   );
 
+  // シミュレーション画面用のスタート位置・ゴール位置・断面図パス生成
+  const totalLapsForSim = Math.max(0.55, distance / (venueProfile.lapMeter || 1800));
+  const startLapPosForSim = (((1.0 - (totalLapsForSim % 1)) % 1) + 1) % 1;
+  const startGatePt = getTrackPointAndNormal(startLapPosForSim, venueProfile.dir, 12);
+  const goalGatePt = getTrackPointAndNormal(0.0, venueProfile.dir, 0);
+
+  // 高低差断面図（0%〜100%）のSVGポリライン座標を生成
+  const elevationSamples = 60;
+  const maxElev = Math.max(3.5, venueProfile.elevationDiff + 0.5);
+  const elevPoints: string[] = [];
+  for (let i = 0; i <= elevationSamples; i++) {
+    const ratio = i / elevationSamples;
+    const lapPos = (startLapPosForSim + ratio * totalLapsForSim) % 1;
+    const elev = venueProfile.getElevationAtLapPos(lapPos);
+    const px = 40 + ratio * 720;
+    const py = 74 - (elev / maxElev) * 48;
+    elevPoints.push(`${px.toFixed(1)},${py.toFixed(1)}`);
+  }
+  const elevPolygonPoints = `40,78 ${elevPoints.join(' ')} 760,78`;
+  const currentLeadLapPos = (startLapPosForSim + simProgress * totalLapsForSim) % 1;
+  const currentLeadElev = venueProfile.getElevationAtLapPos(currentLeadLapPos);
+  const currentElevX = 40 + simProgress * 720;
+  const currentElevY = 74 - (currentLeadElev / maxElev) * 48;
+
   const currentScenario = PACE_SCENARIOS[expectedPace] || PACE_SCENARIOS.M_JIRIKI;
 
   const displayedDiagnosis = diagnosisResults
@@ -1169,17 +1720,17 @@ export default function Home() {
     <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
       <div className="max-w-5xl mx-auto">
         <h1 className="text-2xl md:text-3xl font-bold mb-2 text-center text-red-500">
-          PRO仕様 競馬本格シミュレーター (前年/今年度時計＆過去5走履歴完全版)
+          PRO仕様 競馬本格シミュレーター (リアル隊列・まくり・コース高低差搭載版)
         </h1>
         <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
-          [ ①前年/今年度タイム・上り3F × ②各馬の過去5走履歴 × ③高速上がり・外枠地力保護 × ④2・3列目攻略4パターン ]
+          [ ①前年/今年度時計 × ②過去5走履歴 × ③右/左回り・距離別スタート・高低差断面図 × ④リアル隊列・まくり ]
         </p>
 
         {/* STEP 1 */}
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-grow w-full">
             <label className="text-sm text-gray-400 block mb-2 font-bold">
-              STEP 1: 🌐 レースIDから出馬表・過去5走履歴・前年/今年度タイム・オッズを全自動取得
+              STEP 1: 🌐 レースIDから出馬表・過去5走履歴・前年/今年度タイム・コース形状を全自動取得
             </label>
             <input
               type="text"
@@ -1194,43 +1745,54 @@ export default function Home() {
             disabled={fetching}
             className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 md:py-4 px-8 rounded-lg shadow-lg transition whitespace-nowrap disabled:opacity-50"
           >
-            {fetching ? '5走柱＆前年/今年度時計解析中...' : '出馬表を取り込む ↓'}
+            {fetching ? '5走柱＆コース解析中...' : '出馬表を取り込む ↓'}
           </button>
         </div>
 
         {/* STEP 2 */}
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
           <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-300">
-            STEP 2: 前年/今年度タイム・上がり3F基準 ＆ 2段階全頭診断
+            STEP 2: コース形状・前年/今年度タイム基準 ＆ 2段階全頭診断
           </h2>
 
           {targetRaceName && (
-            <div className="mb-4 p-4 md:p-5 bg-gray-900 border border-yellow-600/50 rounded-lg shadow-inner flex flex-col md:flex-row items-center justify-between gap-3">
-              <div className="flex flex-col w-full">
-                <span className="text-yellow-500 font-bold text-xs mb-1 tracking-wider">
-                  TARGET RACE
-                </span>
-                <h3 className="text-xl md:text-2xl font-extrabold text-white leading-tight">
-                  {targetRaceName}
-                </h3>
-              </div>
-              <div className="flex flex-wrap gap-2 justify-start md:justify-end w-full md:w-auto">
-                <span className="inline-block bg-green-800 text-green-100 font-bold px-3 py-1.5 rounded-full text-xs border border-green-600 shadow-sm whitespace-nowrap">
-                  📍 {targetPlace}競馬場 / {courseType}
-                  {distance}m
-                </span>
-                {courseRpci !== null && (
-                  <span
-                    className={`inline-block font-bold px-3 py-1.5 rounded-full text-xs border shadow-sm whitespace-nowrap ${getPciBadgeStyle(courseRpciType)}`}
-                  >
-                    ⏱️ 舞台RPCI: {courseRpci} (傾向{courseRpciType})
+            <div className="mb-4 p-4 md:p-5 bg-gray-900 border border-yellow-600/50 rounded-lg shadow-inner flex flex-col gap-3">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                <div className="flex flex-col">
+                  <span className="text-yellow-500 font-bold text-xs mb-1 tracking-wider">
+                    TARGET RACE & COURSE PROFILE
                   </span>
-                )}
+                  <h3 className="text-xl md:text-2xl font-extrabold text-white leading-tight">
+                    {targetRaceName}
+                  </h3>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-block bg-green-800 text-green-100 font-bold px-3 py-1.5 rounded-full text-xs border border-green-600 shadow-sm whitespace-nowrap">
+                    📍 {targetPlace}競馬場 / {courseType}
+                    {distance}m ({venueProfile.dir === 'LEFT' ? '左回り↺' : '右回り↻'})
+                  </span>
+                  <span className="inline-block bg-amber-900/70 text-amber-200 font-bold px-3 py-1.5 rounded-full text-xs border border-amber-600 shadow-sm whitespace-nowrap">
+                    ⛰️ 高低差 {venueProfile.elevationDiff}m / 直線 {venueProfile.straightMeter}m
+                  </span>
+                  {courseRpci !== null && (
+                    <span
+                      className={`inline-block font-bold px-3 py-1.5 rounded-full text-xs border shadow-sm whitespace-nowrap ${getPciBadgeStyle(courseRpciType)}`}
+                    >
+                      ⏱️ 舞台RPCI: {courseRpci} (傾向{courseRpciType})
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-xs text-gray-300 bg-gray-950/80 px-3 py-2 rounded-lg border border-gray-800">
+                <span className="text-amber-400 font-bold mr-2">
+                  【コース起伏特徴：{venueProfile.slopeTitle}】
+                </span>
+                {venueProfile.featureText}
               </div>
             </div>
           )}
 
-          {/* ★新機能: 前年（発走前）＆ 今年度（終了後）の1着ゴールタイム・1〜3着上がり3Fパネル */}
+          {/* 前年（発走前）＆ 今年度（終了後）の1着ゴールタイム・1〜3着上がり3Fパネル */}
           {referenceBenchmarks && (
             <div className="mb-5 space-y-3">
               {referenceBenchmarks.current_year &&
@@ -1695,7 +2257,6 @@ export default function Home() {
               </p>
             </div>
 
-            {/* STEP 3内にも前年/今年度ベンチマークを表示 */}
             {referenceBenchmarks && (
               <div className="mb-6 space-y-2.5">
                 {referenceBenchmarks.current_year &&
@@ -1712,7 +2273,6 @@ export default function Home() {
                   🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 戦術別4パターン買い目
                 </h3>
 
-                {/* AI予想印（◎〇▲☆△）一覧 ＆ 𝕏ワンタップ共有パネル */}
                 {marksSummary && (
                   <div className="mb-6 bg-gray-900 border border-sky-500/60 rounded-xl p-4 shadow-lg">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-gray-800 pb-2.5 mb-3">
@@ -1802,7 +2362,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* 軸信頼度ジャッジバナー */}
                 {axisDefensePlan && (
                   <div
                     className={`mb-5 p-3.5 md:p-4 rounded-xl border-2 ${
@@ -1835,7 +2394,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* 1列目・2列目・3列目・完全消しの役割グループ一覧 */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6 text-xs">
                   <div className="bg-yellow-950/40 border border-yellow-600/60 rounded-lg p-3">
                     <div className="text-yellow-400 font-bold mb-1.5">👑 1列目（1着軸本命）</div>
@@ -1915,7 +2473,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* 単勝・複勝・1着軸ワイド（基本買い目） */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 text-xs">
                   <div className="bg-gray-900 border border-gray-700 rounded-lg p-3">
                     <div className="flex justify-between items-center font-bold text-amber-400 border-b border-gray-800 pb-1 mb-1.5">
@@ -1973,7 +2530,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* ワイド(2列目×3列目)・3連複・3連単 各4パターン戦術ボード */}
                 {axisDefensePlan && (
                   <div className="space-y-6">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-t border-gray-800 pt-4">
@@ -2029,7 +2585,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* A. ワイド（2列目 × 3列目で買う 4パターン） */}
                     {(activePatternTab === 'ALL' || activePatternTab === 'WIDE') && (
                       <div className="bg-gradient-to-br from-pink-950/40 to-gray-900 border-2 border-pink-500/70 rounded-xl p-4">
                         <div className="flex items-center justify-between border-b border-pink-800/70 pb-2 mb-3">
@@ -2071,7 +2626,6 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* B. 3連複（戦術別 4パターン） */}
                     {(activePatternTab === 'ALL' || activePatternTab === 'PUKU') && (
                       <div className="bg-gradient-to-br from-emerald-950/40 to-gray-900 border-2 border-emerald-500/70 rounded-xl p-4">
                         <div className="flex items-center justify-between border-b border-emerald-800/70 pb-2 mb-3">
@@ -2113,7 +2667,6 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* C. 3連単（1着固定＆逆転フォーメーション 4パターン） */}
                     {(activePatternTab === 'ALL' || activePatternTab === 'TAN') && (
                       <div className="bg-gradient-to-br from-indigo-950/50 via-purple-950/40 to-gray-900 border-2 border-amber-400/80 rounded-xl p-4">
                         <div className="flex items-center justify-between border-b border-amber-700/70 pb-2 mb-3">
@@ -2323,7 +2876,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* ★復元: 各馬の過去5走詳細テーブル（レース名・距離・着順・タイム・上り3F・走行順位） */}
                     {horse.history_details && horse.history_details.length > 0 && (
                       <div className="mt-1 bg-gray-950/90 rounded-lg p-2.5 border border-gray-800 overflow-x-auto">
                         <div className="text-[10px] font-bold text-gray-400 mb-1 flex justify-between items-center">
@@ -2387,19 +2939,20 @@ export default function Home() {
               disabled={loading}
               className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 md:py-4 rounded-lg mt-6 md:mt-8 shadow-[0_0_15px_rgba(220,38,38,0.5)] text-sm md:text-lg transition duration-200 disabled:opacity-50"
             >
-              {loading ? 'レースを生成中...' : '🏁 最終パラメータを加味してシミュレーション開始'}
+              {loading ? 'レースを生成中...' : '🏁 リアル隊列・まくり・コース高低差シミュレーション開始'}
             </button>
           </div>
         )}
 
+        {/* ★刷新: リアル隊列・まくり・会場別右/左回り・距離別スタート・高低差断面図モーダル */}
         {isRacing && results && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 md:p-4">
-            <div className="relative w-full max-w-4xl max-h-[95vh] overflow-y-auto bg-gray-900 rounded-2xl border border-gray-600 shadow-2xl p-4 md:p-6">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-2 md:p-4">
+            <div className="relative w-full max-w-5xl max-h-[96vh] overflow-y-auto bg-gray-900 rounded-2xl border border-gray-600 shadow-2xl p-3 md:p-5">
               <button
                 onClick={() => {
-                  if (resultTimerRef.current) {
-                    clearTimeout(resultTimerRef.current);
-                    resultTimerRef.current = null;
+                  if (animFrameRef.current) {
+                    cancelAnimationFrame(animFrameRef.current);
+                    animFrameRef.current = null;
                   }
                   setIsRacing(false);
                   setShowResults(false);
@@ -2408,110 +2961,330 @@ export default function Home() {
               >
                 ✕
               </button>
-              <h3 className="text-center font-bold text-gray-300 mb-3 md:mb-4 tracking-widest text-lg md:text-xl">
-                【 RACE TRACKING 】
-              </h3>
-              <div className="relative w-full mx-auto bg-[#1b4332] rounded-xl overflow-hidden shadow-inner border-2 border-gray-700">
+
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 mb-3 pr-8">
+                <div>
+                  <h3 className="font-extrabold text-white text-base md:text-xl flex items-center gap-2">
+                    <span>🏁 {targetPlace || '東京'}競馬場</span>
+                    <span className="text-yellow-400">
+                      {courseType}
+                      {distance}m
+                    </span>
+                    <span className="bg-indigo-900 text-indigo-200 border border-indigo-500 px-2.5 py-0.5 rounded-full text-xs">
+                      {venueProfile.dir === 'LEFT' ? '↺ 左回り（反時計回り）' : '↻ 右回り（時計回り）'}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{venueProfile.featureText}</p>
+                </div>
+                <div className="bg-gray-950 border border-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold text-sky-300 whitespace-nowrap">
+                  {simPhaseLabel} ({Math.round(simProgress * distance)}m / {distance}m)
+                </div>
+              </div>
+
+              {/* メイントラック ＆ 高低差断面図 SVG */}
+              <div className="relative w-full mx-auto bg-[#143627] rounded-xl overflow-hidden shadow-inner border-2 border-gray-700">
                 <svg
-                  key={`race-svg-${simRunId}`}
-                  ref={svgRef}
-                  viewBox="0 0 800 300"
+                  viewBox="0 0 800 395"
                   className="w-full h-auto block"
                   preserveAspectRatio="xMidYMid meet"
                 >
-                  <rect width="800" height="300" fill="#2d6a4f" />
+                  {/* 背景芝エリア */}
+                  <rect width="800" height="300" fill="#1b4332" />
+
+                  {/* 外ラチ・コース路盤（芝は濃緑、ダートは茶色） */}
                   <path
-                    d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z"
-                    fill="#1b4332"
-                    stroke="#d4a373"
-                    strokeWidth="46"
-                  />
-                  <path
-                    d="M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z"
+                    d="M 210 253 L 590 253 A 101 101 0 0 0 590 51 L 210 51 A 101 101 0 0 0 210 253 Z"
                     fill="none"
-                    stroke="#ffffff"
+                    stroke={courseType === 'ダ' ? '#b08968' : '#2d6a4f'}
+                    strokeWidth="36"
+                  />
+                  {/* 内ラチライン */}
+                  <path
+                    d="M 210 240 L 590 240 A 88 88 0 0 0 590 64 L 210 64 A 88 88 0 0 0 210 240 Z"
+                    fill="#143627"
+                    stroke="#e5e7eb"
                     strokeWidth="2"
-                    strokeDasharray="4 8"
-                    opacity="0.8"
+                    strokeDasharray="5 5"
+                    opacity="0.75"
                   />
-                  <line
-                    x1="500"
-                    y1="227"
-                    x2="500"
-                    y2="273"
-                    stroke="#ef4444"
-                    strokeWidth="6"
-                    opacity="0.9"
-                  />
+
+                  {/* 中央インフィールド情報表示 */}
                   <text
-                    x="500"
-                    y="290"
-                    fill="white"
-                    fontSize="14"
+                    x="400"
+                    y="132"
+                    fill="#ffffff"
+                    fontSize="15"
                     fontWeight="bold"
                     textAnchor="middle"
-                    opacity="0.9"
+                    opacity="0.85"
                   >
-                    GOAL
+                    {targetPlace || '東京'} {courseType}
+                    {distance}m ({venueProfile.dir === 'LEFT' ? '左回り ↺' : '右回り ↻'})
                   </text>
-                  {results.map((result) => {
-                    const horse = horses.find((h) => h.umaban === result.umaban);
-                    const kyakushitsu = horse ? horse.kyakushitsu : 2;
-                    let p1 = 0;
-                    let p2 = 0;
-                    if (kyakushitsu === 1) p1 = 0.37;
-                    else if (kyakushitsu === 2) p1 = 0.345;
-                    else if (kyakushitsu === 3) p1 = 0.335;
-                    else p1 = 0.325;
-                    p1 += Math.random() * 0.012 - 0.006;
-                    if (kyakushitsu === 1) p2 = 0.72;
-                    else if (kyakushitsu === 2) p2 = 0.7;
-                    else if (kyakushitsu === 3) p2 = 0.69;
-                    else p2 = 0.68;
-                    p2 += Math.random() * 0.012 - 0.006;
-                    const duration = 12 + result.rank * 0.12 + Math.random() * 0.1;
-                    const colors = getHorseSvgColors(result.umaban);
-                    const pathString =
-                      'M 500 250 L 700 250 A 100 100 0 0 0 700 50 L 100 50 A 100 100 0 0 0 100 250 Z';
-                    return (
-                      <g key={`horse-${simRunId}-${result.umaban}`} className="drop-shadow-lg">
-                        <animateMotion
-                          begin="0s"
-                          dur={`${duration}s`}
-                          fill="freeze"
-                          keyTimes="0; 0.35; 0.7; 1"
-                          keyPoints={`0; ${p1}; ${p2}; 1`}
-                          calcMode="linear"
-                          path={pathString}
-                        />
-                        <circle
-                          cx="0"
-                          cy="0"
-                          r="14"
-                          fill={colors.bg}
-                          stroke={colors.border}
-                          strokeWidth="2"
-                        />
-                        <text
-                          x="0"
-                          y="5"
-                          fontSize="14"
-                          fontWeight="bold"
-                          textAnchor="middle"
-                          fill={colors.text}
+                  <text
+                    x="400"
+                    y="154"
+                    fill="#fcd34d"
+                    fontSize="12"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                    opacity="0.85"
+                  >
+                    直線 {venueProfile.straightMeter}m ／ 高低差 {venueProfile.elevationDiff}m (
+                    {venueProfile.slopeTitle})
+                  </text>
+                  <text
+                    x="400"
+                    y="175"
+                    fill="#93c5fd"
+                    fontSize="11"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                    opacity="0.8"
+                  >
+                    【向正面（バックストレッチ）】{' '}
+                    {venueProfile.dir === 'LEFT' ? '左 ➔ 右へ進行' : '右 ➔ 左へ進行'}
+                  </text>
+                  <text
+                    x="400"
+                    y="218"
+                    fill="#fde047"
+                    fontSize="11"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                    opacity="0.85"
+                  >
+                    【スタンド前直線（ホームストレッチ）】{' '}
+                    {venueProfile.dir === 'LEFT' ? '右 ➔ 左（← GOAL）' : '左 ➔ 右（GOAL →）'}
+                  </text>
+
+                  {/* コーナー名称ラベル */}
+                  <text
+                    x="105"
+                    y="62"
+                    fill="#cbd5e1"
+                    fontSize="11"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
+                    {venueProfile.dir === 'LEFT' ? '第2コーナー' : '第3コーナー'}
+                  </text>
+                  <text
+                    x="695"
+                    y="62"
+                    fill="#cbd5e1"
+                    fontSize="11"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
+                    {venueProfile.dir === 'LEFT' ? '第3コーナー' : '第2コーナー'}
+                  </text>
+                  <text
+                    x="105"
+                    y="262"
+                    fill="#cbd5e1"
+                    fontSize="11"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
+                    {venueProfile.dir === 'LEFT' ? '第1コーナー' : '第4コーナー'}
+                  </text>
+                  <text
+                    x="695"
+                    y="262"
+                    fill="#cbd5e1"
+                    fontSize="11"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
+                    {venueProfile.dir === 'LEFT' ? '第4コーナー' : '第1コーナー'}
+                  </text>
+
+                  {/* 距離別のスタートゲート（STARTマーカー） */}
+                  <g transform={`translate(${startGatePt.x}, ${startGatePt.y})`}>
+                    <circle r="13" fill="#0284c7" stroke="#ffffff" strokeWidth="2" opacity="0.9" />
+                    <text
+                      x="0"
+                      y="3"
+                      fill="#ffffff"
+                      fontSize="8"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                    >
+                      START
+                    </text>
+                    <text
+                      x="0"
+                      y="-17"
+                      fill="#38bdf8"
+                      fontSize="10"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                    >
+                      🚪{distance}m発走地点
+                    </text>
+                  </g>
+
+                  {/* ゴール板（GOALライン） */}
+                  <g transform={`translate(${goalGatePt.x}, ${goalGatePt.y})`}>
+                    <line x1="0" y1="-16" x2="0" y2="36" stroke="#ef4444" strokeWidth="5" />
+                    <circle cx="0" cy="-20" r="6" fill="#ef4444" stroke="#ffffff" strokeWidth="1.5" />
+                    <text
+                      x="0"
+                      y="48"
+                      fill="#fca5a5"
+                      fontSize="12"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                    >
+                      🏁 GOAL
+                    </text>
+                  </g>
+
+                  {/* 全出走馬の小径アイコン（r=8.5）＆ まくり・スパートエフェクト */}
+                  {[...simHorseStates]
+                    .sort((a, b) => b.rank - a.rank)
+                    .map((hs) => {
+                      const colors = getHorseSvgColors(hs.umaban);
+                      return (
+                        <g
+                          key={`sim-h-${hs.umaban}`}
+                          transform={`translate(${hs.x.toFixed(1)}, ${hs.y.toFixed(1)})`}
                         >
-                          {result.umaban}
-                        </text>
-                      </g>
-                    );
-                  })}
+                          {/* まくり発動中の赤発光リング */}
+                          {hs.isMakuriActiveNow && (
+                            <>
+                              <circle
+                                r="13.5"
+                                fill="none"
+                                stroke="#f97316"
+                                strokeWidth="2.5"
+                                opacity="0.9"
+                              />
+                              <text
+                                x="0"
+                                y="-12"
+                                fill="#fdba74"
+                                fontSize="8.5"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                              >
+                                🔥まくり
+                              </text>
+                            </>
+                          )}
+                          {/* 直線上位スパート中の黄色リング */}
+                          {!hs.isMakuriActiveNow && hs.isSpurtActiveNow && (
+                            <circle
+                              r="12"
+                              fill="none"
+                              stroke="#facc15"
+                              strokeWidth="2"
+                              opacity="0.85"
+                            />
+                          )}
+                          {/* 小さめの馬番サークル（r=8.5） */}
+                          <circle
+                            cx="0"
+                            cy="0"
+                            r="8.5"
+                            fill={colors.bg}
+                            stroke={colors.border}
+                            strokeWidth="1.8"
+                          />
+                          <text
+                            x="0"
+                            y="3.2"
+                            fontSize="8.5"
+                            fontWeight="bold"
+                            textAnchor="middle"
+                            fill={colors.text}
+                          >
+                            {hs.umaban}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                  {/* 下部：コース高低差（起伏）断面図エリア (y=300..395) */}
+                  <g transform="translate(0, 300)">
+                    <rect width="800" height="95" fill="#090d16" />
+                    <line x1="0" y1="0" x2="800" y2="0" stroke="#374151" strokeWidth="1.5" />
+                    <text x="40" y="16" fill="#9ca3af" fontSize="10" fontWeight="bold">
+                      ⛰️ コース高低差・起伏断面図（START ➔ GOAL {distance}m / 最大高低差{' '}
+                      {venueProfile.elevationDiff}m）
+                    </text>
+
+                    {/* 高低差ポリゴン＆ライン */}
+                    <polygon points={elevPolygonPoints} fill="rgba(16, 185, 129, 0.22)" />
+                    <polyline
+                      points={elevPoints.join(' ')}
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="2.5"
+                    />
+
+                    {/* 基準ライン */}
+                    <line
+                      x1="40"
+                      y1="78"
+                      x2="760"
+                      y2="78"
+                      stroke="#4b5563"
+                      strokeWidth="1"
+                    />
+                    <text x="40" y="90" fill="#60a5fa" fontSize="9" fontWeight="bold">
+                      START (0m)
+                    </text>
+                    <text
+                      x="400"
+                      y="90"
+                      fill="#9ca3af"
+                      fontSize="9"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                    >
+                      道中・3〜4コーナー勝負所 ({Math.round(distance * 0.5)}m付近)
+                    </text>
+                    <text
+                      x="760"
+                      y="90"
+                      fill="#f87171"
+                      fontSize="9"
+                      fontWeight="bold"
+                      textAnchor="end"
+                    >
+                      🏁 GOAL ({distance}m)
+                    </text>
+
+                    {/* 現在走行位置インジケーター */}
+                    <line
+                      x1={currentElevX}
+                      y1="22"
+                      x2={currentElevX}
+                      y2="78"
+                      stroke="#facc15"
+                      strokeWidth="1.5"
+                      strokeDasharray="2 2"
+                    />
+                    <circle
+                      cx={currentElevX}
+                      cy={currentElevY}
+                      r="5"
+                      fill="#facc15"
+                      stroke="#000000"
+                      strokeWidth="1.5"
+                    />
+                  </g>
                 </svg>
+
+                {/* レース確定ポップアップ */}
                 {showResults && (
                   <div
                     className="absolute inset-0 bg-black/85 z-40 flex flex-col items-center justify-center p-2 md:p-4"
-                    style={{ animation: 'popIn 0.5s ease-out forwards' }}
+                    style={{ animation: 'popIn 0.4s ease-out forwards' }}
                   >
-                    <h3 className="text-2xl md:text-3xl font-black text-yellow-400 mb-3 md:mb-4 tracking-widest">
+                    <h3 className="text-2xl md:text-3xl font-black text-yellow-400 mb-3 tracking-widest">
                       レース確定
                     </h3>
                     <div className="w-full max-w-sm md:max-w-lg bg-gray-900 border-2 border-yellow-600 rounded-xl p-2 md:p-4 shadow-[0_0_30px_rgba(234,179,8,0.3)] overflow-x-auto">
@@ -2549,30 +3322,42 @@ export default function Home() {
                           ))}
                         </tbody>
                       </table>
+                      <div className="mt-3 flex justify-center">
+                        <button
+                          onClick={() => {
+                            setShowResults(false);
+                            setSimRunId((prev) => prev + 1);
+                          }}
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition"
+                        >
+                          🔄 もう一度リプレイを見る
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
+
               <div
-                className={`mt-4 md:mt-6 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 transition-opacity duration-1000 ${showResults ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}
+                className={`mt-3 md:mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 transition-opacity duration-700 ${showResults ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}
               >
                 {results.map((result, index) => (
                   <div
                     key={index}
-                    className={`flex flex-col p-2 md:p-3 rounded-xl border ${result.rank === 1 ? 'bg-yellow-900/40 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : result.rank <= 3 ? 'bg-gray-800 border-gray-500' : 'bg-gray-900 border-gray-800'}`}
+                    className={`flex flex-col p-2 md:p-2.5 rounded-xl border ${result.rank === 1 ? 'bg-yellow-900/40 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : result.rank <= 3 ? 'bg-gray-800 border-gray-500' : 'bg-gray-900 border-gray-800'}`}
                   >
                     <div className="flex items-center gap-1.5 md:gap-2">
                       <span
-                        className={`text-sm md:text-lg font-extrabold ${result.rank === 1 ? 'text-yellow-400' : result.rank === 2 ? 'text-gray-300' : result.rank === 3 ? 'text-orange-400' : 'text-gray-600'}`}
+                        className={`text-sm md:text-base font-extrabold ${result.rank === 1 ? 'text-yellow-400' : result.rank === 2 ? 'text-gray-300' : result.rank === 3 ? 'text-orange-400' : 'text-gray-600'}`}
                       >
                         {result.rank}着
                       </span>
                       <div
-                        className={`w-5 h-5 md:w-6 md:h-6 flex items-center justify-center font-bold text-[9px] md:text-[10px] rounded-full border flex-shrink-0 ${getHorseColor(result.umaban)}`}
+                        className={`w-5 h-5 flex items-center justify-center font-bold text-[9px] rounded-full border flex-shrink-0 ${getHorseColor(result.umaban)}`}
                       >
                         {result.umaban}
                       </div>
-                      <span className="text-xs md:text-sm font-bold text-gray-200 truncate flex-grow">
+                      <span className="text-xs font-bold text-gray-200 truncate flex-grow">
                         {result.bamei}
                       </span>
                     </div>
