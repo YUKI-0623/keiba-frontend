@@ -25,6 +25,8 @@ interface HorseData {
   condition_override: string;
   condition_reason?: string;
   training_rank?: string;
+  training_4f?: string;
+  training_1f?: string;
   rotation_mult?: number;
   rotation_label?: string;
   zenso_chakujun: number;
@@ -33,6 +35,7 @@ interface HorseData {
   shussou_kaisuu: number;
   pci?: number;
   pci_type?: string;
+  early_3f_sec?: number;
   history_details?: HistoryDetail[];
 }
 
@@ -47,18 +50,24 @@ interface DiagnosisResult {
   stage2_rank: number;
   shisu_diff: number;
   myoumi: number;
+  norm_win_prob?: number;
   time_diff: number;
   pci: number;
   pci_type: string;
+  early_3f_sec?: number;
   bataijuu: number;
   weight_change: number;
   training_rank?: string;
   rotation_label?: string;
   pedigree_label?: string;
+  tactical_badges?: string[];
+  box_in_risk_level?: string;
+  lap_gear_label?: string;
   time_limit_mult?: number;
   bias_mult?: number;
   pace_mult?: number;
   condition_mult?: number;
+  tactical_mult?: number;
   role_code?: string;
   role_label?: string;
   is_bias_victim_rescued?: boolean;
@@ -175,14 +184,29 @@ interface BettingTickets {
   };
 }
 
+interface AllocatedComboItem {
+  combo: string;
+  estOdds: number;
+  aiProb: number;
+  ev: number;
+  stakeYen: number;
+  expectedReturnYen: number;
+  isTrigamiWarn: boolean;
+  isValuePick: boolean;
+}
+
 interface PatternTicketItem {
   id: string;
+  ticketType: 'WIDE' | 'PUKU' | 'TAN';
   title: string;
   badge: string;
   structureText: string;
   subNote: string;
   combos: string[];
   count: number;
+  syntheticOdds: number;
+  totalStakeYen: number;
+  allocations: AllocatedComboItem[];
 }
 
 interface AxisDefensePlan {
@@ -359,6 +383,222 @@ function normalizeToSupportedVenue(placeName: string): string {
 function getVenueProfile(placeName: string): VenueProfile {
   const norm = normalizeToSupportedVenue(placeName);
   return VENUE_PROFILES[norm] || VENUE_PROFILES['東京'];
+}
+
+/**
+ * 追切時計（4F全体時計 × ラスト1F時計）から客観基準でS/A/B/Cランクを自動判定する関数
+ */
+function evaluateTrainingRankFromClock(t4fStr?: string, t1fStr?: string): string | null {
+  const t4f = parseFloat(t4fStr || '');
+  const t1f = parseFloat(t1fStr || '');
+  if (isNaN(t4f) && isNaN(t1f)) return null;
+
+  if (!isNaN(t1f) && !isNaN(t4f)) {
+    if ((t4f <= 51.5 && t1f <= 11.5) || (t4f <= 52.5 && t1f <= 11.2)) return 'S';
+    if ((t4f <= 53.2 && t1f <= 11.7) || t1f <= 11.4 || t4f <= 50.8) return 'A';
+    if (t1f >= 12.7 || (t4f >= 56.0 && t1f >= 12.4)) return 'C';
+    return 'B';
+  }
+  if (!isNaN(t1f)) {
+    if (t1f <= 11.2) return 'S';
+    if (t1f <= 11.6) return 'A';
+    if (t1f >= 12.7) return 'C';
+    return 'B';
+  }
+  if (!isNaN(t4f)) {
+    if (t4f <= 50.5) return 'S';
+    if (t4f <= 52.0) return 'A';
+    if (t4f >= 56.5) return 'C';
+    return 'B';
+  }
+  return null;
+}
+
+/**
+ * Harville（ハービル）の公式による各買い目の推定オッズ・AI的中確率・資金配分計算エンジン
+ */
+function computePatternAllocations(
+  combos: string[],
+  ticketType: 'WIDE' | 'PUKU' | 'TAN',
+  diagnosis: DiagnosisResult[],
+  budgetYen: number,
+  allocMode: 'EV_FOCUS' | 'EQUAL_RETURN'
+): {
+  syntheticOdds: number;
+  totalStakeYen: number;
+  allocations: AllocatedComboItem[];
+} {
+  if (!combos || combos.length === 0 || !diagnosis || diagnosis.length === 0) {
+    return { syntheticOdds: 0, totalStakeYen: 0, allocations: [] };
+  }
+
+  // 市場単勝オッズから正規化した市場勝率 p_mkt と、AI指数から正規化したAI勝率 p_ai を構築
+  const mktProbs: Record<number, number> = {};
+  const aiProbs: Record<number, number> = {};
+  let sumMkt = 0;
+  let sumAi = 0;
+
+  for (const d of diagnosis) {
+    const rawMkt = d.odds > 1.0 ? 0.8 / d.odds : 0.05;
+    mktProbs[d.umaban] = rawMkt;
+    sumMkt += rawMkt;
+
+    const rawAi =
+      d.norm_win_prob && d.norm_win_prob > 0
+        ? d.norm_win_prob
+        : Math.exp((d.shisu - 50) / 8.5);
+    aiProbs[d.umaban] = rawAi;
+    sumAi += rawAi;
+  }
+
+  for (const d of diagnosis) {
+    mktProbs[d.umaban] = sumMkt > 0 ? mktProbs[d.umaban] / sumMkt : 1 / diagnosis.length;
+    aiProbs[d.umaban] = sumAi > 0 ? aiProbs[d.umaban] / sumAi : 1 / diagnosis.length;
+  }
+
+  const calcExactOrderProb = (pMap: Record<number, number>, a: number, b: number, c: number) => {
+    const pa = pMap[a] || 0.01;
+    const pb = pMap[b] || 0.01;
+    const pc = pMap[c] || 0.01;
+    const denom1 = Math.max(0.01, 1.0 - pa);
+    const denom2 = Math.max(0.01, 1.0 - pa - pb);
+    return pa * (pb / denom1) * (pc / denom2);
+  };
+
+  const calcTrioUnorderedProb = (
+    pMap: Record<number, number>,
+    a: number,
+    b: number,
+    c: number
+  ) => {
+    return (
+      calcExactOrderProb(pMap, a, b, c) +
+      calcExactOrderProb(pMap, a, c, b) +
+      calcExactOrderProb(pMap, b, a, c) +
+      calcExactOrderProb(pMap, b, c, a) +
+      calcExactOrderProb(pMap, c, a, b) +
+      calcExactOrderProb(pMap, c, b, a)
+    );
+  };
+
+  const calcWideApproxProb = (pMap: Record<number, number>, a: number, b: number) => {
+    const pa = pMap[a] || 0.01;
+    const pb = pMap[b] || 0.01;
+    const quinellaProb =
+      (pa * pb) / Math.max(0.01, 1.0 - pa) + (pb * pa) / Math.max(0.01, 1.0 - pb);
+    return Math.min(0.65, quinellaProb * 2.65);
+  };
+
+  const rawItems = combos.map((comboStr) => {
+    const nums = comboStr
+      .split(/[-→]/)
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n));
+
+    let mktP = 0.005;
+    let aiP = 0.005;
+    let estOdds = 10.0;
+
+    if (ticketType === 'WIDE' && nums.length >= 2) {
+      mktP = calcWideApproxProb(mktProbs, nums[0], nums[1]);
+      aiP = calcWideApproxProb(aiProbs, nums[0], nums[1]);
+      estOdds = Math.max(1.2, Math.min(250.0, (0.775 / Math.max(0.0005, mktP)) * 0.85));
+    } else if (ticketType === 'PUKU' && nums.length >= 3) {
+      mktP = calcTrioUnorderedProb(mktProbs, nums[0], nums[1], nums[2]);
+      aiP = calcTrioUnorderedProb(aiProbs, nums[0], nums[1], nums[2]);
+      estOdds = Math.max(2.0, Math.min(3000.0, 0.75 / Math.max(0.0001, mktP)));
+    } else if (ticketType === 'TAN' && nums.length >= 3) {
+      mktP = calcExactOrderProb(mktProbs, nums[0], nums[1], nums[2]);
+      aiP = calcExactOrderProb(aiProbs, nums[0], nums[1], nums[2]);
+      estOdds = Math.max(3.5, Math.min(9999.0, 0.725 / Math.max(0.00003, mktP)));
+    }
+
+    estOdds = Number(estOdds.toFixed(1));
+    const ev = Number((aiP * estOdds).toFixed(2));
+    return {
+      combo: comboStr,
+      estOdds,
+      aiProb: aiP,
+      ev,
+    };
+  });
+
+  // 合成オッズ = 1 / Σ(1 / estOdds)
+  const invSum = rawItems.reduce((acc, item) => acc + 1.0 / Math.max(1.0, item.estOdds), 0);
+  const syntheticOdds = invSum > 0 ? Number((1.0 / invSum).toFixed(2)) : 0;
+
+  // 予算配分（100円単位）
+  const safeBudget = Math.max(combos.length * 100, Math.round(budgetYen / 100) * 100);
+  const weights = rawItems.map((item) => {
+    const baseEqualWeight = 1.0 / Math.max(1.1, item.estOdds);
+    if (allocMode === 'EQUAL_RETURN') {
+      return baseEqualWeight;
+    }
+    // AI期待値・穴目重視モード: 均等払戻をベースにしつつ、EVが高い穴目の比率を最大1.7倍まで引き上げる
+    const evBoost = Math.max(0.65, Math.min(1.85, Math.pow(Math.max(0.4, item.ev), 0.55)));
+    return baseEqualWeight * evBoost;
+  });
+
+  const weightSum = weights.reduce((a, b) => a + b, 0) || 1.0;
+  const stakes = weights.map((w) =>
+    Math.max(100, Math.round(((safeBudget * (w / weightSum)) / 100)) * 100)
+  );
+
+  // 合計金額が予算に近づくよう微調整
+  let currentTotal = stakes.reduce((a, b) => a + b, 0);
+  let guard = 0;
+  while (currentTotal > safeBudget && guard < 100) {
+    let maxIdx = -1;
+    let maxVal = 100;
+    for (let i = 0; i < stakes.length; i++) {
+      if (stakes[i] > maxVal) {
+        maxVal = stakes[i];
+        maxIdx = i;
+      }
+    }
+    if (maxIdx === -1) break;
+    stakes[maxIdx] -= 100;
+    currentTotal -= 100;
+    guard++;
+  }
+  while (currentTotal < safeBudget && guard < 100) {
+    // 最もEVが高い目に+100円
+    let bestIdx = 0;
+    let bestScore = -1;
+    for (let i = 0; i < rawItems.length; i++) {
+      const sc = allocMode === 'EV_FOCUS' ? rawItems[i].ev : 1.0 / rawItems[i].estOdds;
+      if (sc > bestScore) {
+        bestScore = sc;
+        bestIdx = i;
+      }
+    }
+    stakes[bestIdx] += 100;
+    currentTotal += 100;
+    guard++;
+  }
+
+  const finalTotalStake = stakes.reduce((a, b) => a + b, 0);
+
+  const allocations: AllocatedComboItem[] = rawItems.map((item, idx) => {
+    const stakeYen = stakes[idx];
+    const expectedReturnYen = Math.round(stakeYen * item.estOdds);
+    return {
+      combo: item.combo,
+      estOdds: item.estOdds,
+      aiProb: item.aiProb,
+      ev: item.ev,
+      stakeYen,
+      expectedReturnYen,
+      isTrigamiWarn: expectedReturnYen < finalTotalStake,
+      isValuePick: item.ev >= 1.15,
+    };
+  });
+
+  return {
+    syntheticOdds,
+    totalStakeYen: finalTotalStake,
+    allocations,
+  };
 }
 
 function resolveStartConfig(
@@ -678,6 +918,31 @@ function getPciBadgeStyle(pciType?: string): string {
   return 'bg-green-900/70 text-green-200 border-green-600';
 }
 
+function getTacticalBadgeStyle(badgeText: string): string {
+  if (badgeText.includes('🚨') || badgeText.includes('イン包まれ警戒')) {
+    return 'bg-red-950/90 text-red-200 border-red-500 font-extrabold shadow-[0_0_6px_rgba(239,68,68,0.5)]';
+  }
+  if (badgeText.includes('⚠️') || badgeText.includes('注意')) {
+    return 'bg-amber-950/90 text-amber-200 border-amber-500 font-extrabold';
+  }
+  if (badgeText.includes('🛡️') || badgeText.includes('1強地力')) {
+    return 'bg-emerald-950/90 text-yellow-300 border-emerald-400 font-extrabold';
+  }
+  if (badgeText.includes('⚡') || badgeText.includes('瞬発ギア') || badgeText.includes('鋭伸ギア')) {
+    return 'bg-sky-950/90 text-sky-200 border-sky-400 font-extrabold';
+  }
+  if (badgeText.includes('🚀') || badgeText.includes('単騎ハナ')) {
+    return 'bg-fuchsia-950/90 text-pink-200 border-pink-400 font-extrabold';
+  }
+  if (badgeText.includes('🟢') || badgeText.includes('スムーズ加速')) {
+    return 'bg-teal-950/90 text-teal-200 border-teal-400 font-bold';
+  }
+  if (badgeText.includes('🔥') || badgeText.includes('ロンスパ')) {
+    return 'bg-orange-950/90 text-orange-200 border-orange-500 font-bold';
+  }
+  return 'bg-indigo-950/80 text-indigo-200 border-indigo-500 font-bold';
+}
+
 function getHorseColor(umaban: number): string {
   const colors = [
     'bg-white text-gray-900 border-gray-300',
@@ -887,7 +1152,9 @@ function buildHorseMarksAndPostText(
 
 function buildAxisDefensePlan(
   diagnosis: DiagnosisResult[] | null,
-  tickets: BettingTickets | null
+  tickets: BettingTickets | null,
+  budgetYen: number,
+  allocMode: 'EV_FOCUS' | 'EQUAL_RETURN'
 ): AxisDefensePlan | null {
   if (!diagnosis || diagnosis.length < 3 || !tickets) return null;
 
@@ -901,6 +1168,9 @@ function buildAxisDefensePlan(
   const fav1Horse = byOdds.length > 0 ? byOdds[0] : axisHorse;
 
   const shisuGap = Number((axisHorse.shisu - secondHorse.shisu).toFixed(1));
+  const axisHasBoxRisk =
+    axisHorse.box_in_risk_level === 'HIGH_BOX_RISK' ||
+    axisHorse.box_in_risk_level === 'MOD_BOX_RISK';
 
   let level: 'HIGH' | 'MEDIUM' | 'RISK' = 'HIGH';
   let badgeText = '👑 軸信頼度: S（王道パターン①中心推奨）';
@@ -911,10 +1181,18 @@ function buildAxisDefensePlan(
     fav1Horse.odds <= 2.8 && (fav1Horse.stage2_rank >= 3 || fav1Horse.stage1_rank >= 3);
   const axisNotPureTop = axisHorse.stage1_rank >= 3 || shisuGap < 1.8;
 
-  if (fav1IsVulnerable || (axisHorse.odds <= 2.5 && axisHorse.stage1_rank >= 2) || shisuGap < 1.5) {
+  if (
+    fav1IsVulnerable ||
+    axisHasBoxRisk ||
+    (axisHorse.odds <= 2.5 && axisHorse.stage1_rank >= 2) ||
+    shisuGap < 1.5
+  ) {
     level = 'RISK';
-    badgeText = '🚨 軸信頼度: B（波乱・2列目×3列目パターン推奨）';
-    if (fav1IsVulnerable && fav1Horse.umaban !== axisHorse.umaban) {
+    badgeText = '🚨 軸信頼度: B（波乱・包まれ警戒・2列目×3列目パターン推奨）';
+    if (axisHasBoxRisk) {
+      headline = `⚠️ 1着軸候補(${axisHorse.umaban}番${axisHorse.bamei})に多頭数の内枠包まれ注意印！2・3列目頭逆転＆タテ目ケア推奨`;
+      reason = `能力上位の${axisHorse.bamei}ですが、外から先行勢が被せる隊列のため直線で進路が詰まるリスクがあります。2・3列目ワイドや3連単『パターン③・④（2列目・3列目1着固定）』の併用が極めて有効です。`;
+    } else if (fav1IsVulnerable && fav1Horse.umaban !== axisHorse.umaban) {
       headline = `⚠️ 1番人気(${fav1Horse.umaban}番${fav1Horse.bamei}:${fav1Horse.odds}倍)に波乱リスク！2・3列目中心のパターン②〜④推奨`;
       reason = `単勝${fav1Horse.odds}倍の1番人気${fav1Horse.bamei}が素の地力${fav1Horse.stage1_rank}位・最終${fav1Horse.stage2_rank}位に留まっています。2列目×3列目ワイドや、3連複・3連単の『パターン②〜④（対抗・地力救済・穴頭）』の期待値が極めて高いレースです。`;
     } else {
@@ -975,6 +1253,38 @@ function buildAxisDefensePlan(
     myoumiSortedRow23[0]?.umaban ||
     main2ndUmabans[0];
 
+  const makeItem = (
+    id: string,
+    ticketType: 'WIDE' | 'PUKU' | 'TAN',
+    title: string,
+    badge: string,
+    structureText: string,
+    subNote: string,
+    combos: string[]
+  ): PatternTicketItem => {
+    const allocInfo = computePatternAllocations(
+      combos,
+      ticketType,
+      diagnosis,
+      budgetYen,
+      allocMode
+    );
+    return {
+      id,
+      ticketType,
+      title,
+      badge,
+      structureText,
+      subNote,
+      combos,
+      count: combos.length,
+      syntheticOdds: allocInfo.syntheticOdds,
+      totalStakeYen: allocInfo.totalStakeYen,
+      allocations: allocInfo.allocations,
+    };
+  };
+
+  // A. ワイド 4パターン
   const wide1Combos = generateWideCombos(
     main2ndUmabans,
     saver3rdUmabans.length > 0 ? saver3rdUmabans : main2ndUmabans
@@ -989,44 +1299,45 @@ function buildAxisDefensePlan(
   const wide4Combos = generateWideCombos(wide4BoxPool, wide4BoxPool);
 
   const widePatterns: PatternTicketItem[] = [
-    {
-      id: 'W1',
-      title: 'パターン①【王道タテ目】2列目本線 ➔ 3列目 クロス流し',
-      badge: '2列目×3列目本線',
-      structureText: `2列目(${main2ndUmabans.join(', ')}) ➔ 3列目(${saver3rdUmabans.join(', ')})`,
-      subNote: '1着軸(◎)が飛んでも、2列目本線と3列目救済馬のペアで確実に拾う基本形',
-      combos: wide1Combos,
-      count: wide1Combos.length,
-    },
-    {
-      id: 'W2',
-      title: 'パターン②【地力逆襲】3列目(地力上位)軸 ➔ 2・3列目流し',
-      badge: '地力救済軸',
-      structureText: `軸: ${row3JirikiAxis.join(', ')}番 ➔ 相手: ${wide2Targets.join(', ')}番`,
-      subNote: '外枠等で3列目に回った「素の地力上位馬」から2・3列目へ流す勝負手',
-      combos: wide2Combos,
-      count: wide2Combos.length,
-    },
-    {
-      id: 'W3',
-      title: 'パターン③【一撃回収】特注穴(☆妙味トップ)軸 ➔ 2・3列目流し',
-      badge: '妙味特注軸',
-      structureText: `特注軸: ${tokuchuAxis}番 ➔ 相手: ${wide3Targets.join(', ')}番`,
-      subNote: '妙味指数トップの伏兵から2・3列目の実力馬へぶつける高配当ワイド',
-      combos: wide3Combos,
-      count: wide3Combos.length,
-    },
-    {
-      id: 'W4',
-      title: 'パターン④【タテ目凝縮】2列目＋3列目 厳選4頭BOX',
-      badge: '2・3列目BOX',
-      structureText: `BOX対象(4頭): ${wide4BoxPool.join(', ')}番`,
-      subNote: '2列目上位2頭＋3列目上位2頭の計4頭で組む、ダブル・トリプル的中狙いの6点BOX',
-      combos: wide4Combos,
-      count: wide4Combos.length,
-    },
+    makeItem(
+      'W1',
+      'WIDE',
+      'パターン①【王道タテ目】2列目本線 ➔ 3列目 クロス流し',
+      '2列目×3列目本線',
+      `2列目(${main2ndUmabans.join(', ')}) ➔ 3列目(${saver3rdUmabans.join(', ')})`,
+      '1着軸(◎)が飛んでも、2列目本線と3列目救済馬のペアで確実に拾う基本形',
+      wide1Combos
+    ),
+    makeItem(
+      'W2',
+      'WIDE',
+      'パターン②【地力逆襲】3列目(地力上位)軸 ➔ 2・3列目流し',
+      '地力救済軸',
+      `軸: ${row3JirikiAxis.join(', ')}番 ➔ 相手: ${wide2Targets.join(', ')}番`,
+      '外枠等で3列目に回った「素の地力上位馬」から2・3列目へ流す勝負手',
+      wide2Combos
+    ),
+    makeItem(
+      'W3',
+      'WIDE',
+      'パターン③【一撃回収】特注穴(☆妙味トップ)軸 ➔ 2・3列目流し',
+      '妙味特注軸',
+      `特注軸: ${tokuchuAxis}番 ➔ 相手: ${wide3Targets.join(', ')}番`,
+      '妙味指数トップの伏兵から2・3列目の実力馬へぶつける高配当ワイド',
+      wide3Combos
+    ),
+    makeItem(
+      'W4',
+      'WIDE',
+      'パターン④【タテ目凝縮】2列目＋3列目 厳選4頭BOX',
+      '2・3列目BOX',
+      `BOX対象(4頭): ${wide4BoxPool.join(', ')}番`,
+      '2列目上位2頭＋3列目上位2頭の計4頭で組む、ダブル・トリプル的中狙いの6点BOX',
+      wide4Combos
+    ),
   ];
 
+  // B. 3連複 4パターン
   const puku1Combos = tickets.sanrenpuku_formation.combos;
   const puku2Row1 = Array.from(
     new Set([main2ndUmabans[0], ...row3JirikiAxis, tokuchuAxis].filter(Boolean))
@@ -1045,44 +1356,45 @@ function buildAxisDefensePlan(
   const puku4Combos = generateSanrenpukuFormCombos(puku4Axis, puku4Targets, puku4Targets);
 
   const sanrenpukuPatterns: PatternTicketItem[] = [
-    {
-      id: 'P1',
-      title: 'パターン①【王道本線】1着軸(◎) ー 2列目 ー 2・3列目F',
-      badge: '本命軸・王道',
-      structureText: `${row1Umabans.join(',')} ー ${main2ndUmabans.join(',')} ー ${allRow2Row3.join(',')}`,
-      subNote: '1着軸(◎)を信頼し、2列目本線と3列目救済馬へ流す最も資金効率の良い基本形',
-      combos: puku1Combos,
-      count: puku1Combos.length,
-    },
-    {
-      id: 'P2',
-      title: 'パターン②【対抗・3列目軸】2・3列目代表 ー 2・3列目 ー 全相手F',
-      badge: '2・3列目主役',
-      structureText: `${puku2Row1.join(',')} ー ${puku2Row2.join(',')} ー ${puku2Row3.join(',')}`,
-      subNote: '2列目筆頭と3列目の地力・特注馬を1列目に据え、本命(◎)が3着でも飛んでも獲れる攻めの形',
-      combos: puku2Combos,
-      count: puku2Combos.length,
-    },
-    {
-      id: 'P3',
-      title: 'パターン③【軸飛びタテ目】2列目＋3列目上位 5頭BOX',
-      badge: '軸抜きBOX',
-      structureText: `BOX対象(5頭): ${puku3BoxPool.join(', ')}番`,
-      subNote: '1着軸(◎)が馬群に沈んだ際、2列目と3列目の実力・穴馬同士で高配当を抜く10点BOX',
-      combos: puku3Combos,
-      count: puku3Combos.length,
-    },
-    {
-      id: 'P4',
-      title: 'パターン④【3列目一撃】3列目(地力・特注筆頭) 1頭軸流し',
-      badge: '3列目1頭軸',
-      structureText: `軸: ${puku4Axis.join(',')}番 ー 相手: ${puku4Targets.join(', ')}番`,
-      subNote: '3列目の最有力馬(地力救済/特注☆)が馬券に絡めば、相手どこでも高配当になる1頭軸流し',
-      combos: puku4Combos,
-      count: puku4Combos.length,
-    },
+    makeItem(
+      'P1',
+      'PUKU',
+      'パターン①【王道本線】1着軸(◎) ー 2列目 ー 2・3列目F',
+      '本命軸・王道',
+      `${row1Umabans.join(',')} ー ${main2ndUmabans.join(',')} ー ${allRow2Row3.join(',')}`,
+      '1着軸(◎)を信頼し、2列目本線と3列目救済馬へ流す最も資金効率の良い基本形',
+      puku1Combos
+    ),
+    makeItem(
+      'P2',
+      'PUKU',
+      'パターン②【対抗・3列目軸】2・3列目代表 ー 2・3列目 ー 全相手F',
+      '2・3列目主役',
+      `${puku2Row1.join(',')} ー ${puku2Row2.join(',')} ー ${puku2Row3.join(',')}`,
+      '2列目筆頭と3列目の地力・特注馬を1列目に据え、本命(◎)が3着でも飛んでも獲れる攻めの形',
+      puku2Combos
+    ),
+    makeItem(
+      'P3',
+      'PUKU',
+      'パターン③【軸飛びタテ目】2列目＋3列目上位 5頭BOX',
+      '軸抜きBOX',
+      `BOX対象(5頭): ${puku3BoxPool.join(', ')}番`,
+      '1着軸(◎)が馬群に沈んだ際、2列目と3列目の実力・穴馬同士で高配当を抜く10点BOX',
+      puku3Combos
+    ),
+    makeItem(
+      'P4',
+      'PUKU',
+      'パターン④【3列目一撃】3列目(地力・特注筆頭) 1頭軸流し',
+      '3列目1頭軸',
+      `軸: ${puku4Axis.join(',')}番 ー 相手: ${puku4Targets.join(', ')}番`,
+      '3列目の最有力馬(地力救済/特注☆)が馬券に絡めば、相手どこでも高配当になる1頭軸流し',
+      puku4Combos
+    ),
   ];
 
+  // C. 3連単 4パターン
   const tan1Combos = tickets.sanrentan_formation.combos;
   const tan2Second = saver3rdUmabans.length > 0 ? saver3rdUmabans : main2ndUmabans;
   const tan2Combos = generateSanrentanFormCombos(row1Umabans, tan2Second, allRow2Row3);
@@ -1102,42 +1414,42 @@ function buildAxisDefensePlan(
   const tan4Combos = generateSanrentanFormCombos(tan4First, tan4Second, tan4Third);
 
   const sanrentanPatterns: PatternTicketItem[] = [
-    {
-      id: 'T1',
-      title: 'パターン①【王道・本命頭】1列目(◎)1着固定 ➔ 2列目 ➔ 2・3列目',
-      badge: '本命1着固定',
-      structureText: `${row1Umabans.join(',')} → ${main2ndUmabans.join(',')} → ${allRow2Row3.join(',')}`,
-      subNote: '不動の本命(◎)を1着に固定し、2着に2列目本線、3着に3列目まで広げる王道勝負馬券',
-      combos: tan1Combos,
-      count: tan1Combos.length,
-    },
-    {
-      id: 'T2',
-      title: 'パターン②【2着ヒモ荒れ】1列目(◎)1着固定 ➔ 3列目2着 ➔ 2・3列目',
-      badge: '3列目2着抜擢',
-      structureText: `${row1Umabans.join(',')} → ${tan2Second.join(',')} → ${allRow2Row3.join(',')}`,
-      subNote: '本命(◎)が勝ち、2着に3列目の地力馬・穴馬が突っ込む高配当1着固定',
-      combos: tan2Combos,
-      count: tan2Combos.length,
-    },
-    {
-      id: 'T3',
-      title: 'パターン③【2列目頭固定】2列目本線(〇▲)1着 ➔ 本命・相手 ➔ 全相手',
-      badge: '2列目1着固定',
-      structureText: `${tan3First.join(',')} → ${tan3Second.join(',')} → ${tan3Third.join(',')}`,
-      subNote: 'バイアス合致の2列目本線が勝ち切り、2・3着に本命や3列目が入る頭逆転フォーメーション',
-      combos: tan3Combos,
-      count: tan3Combos.length,
-    },
-    {
-      id: 'T4',
-      title: 'パターン④【3列目頭・大波乱】3列目(地力・特注)1着 ➔ 2・3列目 ➔ 全相手',
-      badge: '3列目1着固定',
-      structureText: `${tan4First.join(',')} → ${tan4Second.join(',')} → ${tan4Third.join(',')}`,
-      subNote: '3列目の地力上位馬・特注穴が1着で突き抜け、2・3列目で決まる大波乱仕様',
-      combos: tan4Combos,
-      count: tan4Combos.length,
-    },
+    makeItem(
+      'T1',
+      'TAN',
+      'パターン①【王道・本命頭】1列目(◎)1着固定 ➔ 2列目 ➔ 2・3列目',
+      '本命1着固定',
+      `${row1Umabans.join(',')} → ${main2ndUmabans.join(',')} → ${allRow2Row3.join(',')}`,
+      '不動の本命(◎)を1着に固定し、2着に2列目本線、3着に3列目まで広げる王道勝負馬券',
+      tan1Combos
+    ),
+    makeItem(
+      'T2',
+      'TAN',
+      'パターン②【2着ヒモ荒れ】1列目(◎)1着固定 ➔ 3列目2着 ➔ 2・3列目',
+      '3列目2着抜擢',
+      `${row1Umabans.join(',')} → ${tan2Second.join(',')} → ${allRow2Row3.join(',')}`,
+      '本命(◎)が勝ち、2着に3列目の地力馬・穴馬が突っ込む高配当1着固定',
+      tan2Combos
+    ),
+    makeItem(
+      'T3',
+      'TAN',
+      'パターン③【2列目頭固定】2列目本線(〇▲)1着 ➔ 本命・相手 ➔ 全相手',
+      '2列目1着固定',
+      `${tan3First.join(',')} → ${tan3Second.join(',')} → ${tan3Third.join(',')}`,
+      'バイアス合致の2列目本線が勝ち切り、2・3着に本命や3列目が入る頭逆転フォーメーション',
+      tan3Combos
+    ),
+    makeItem(
+      'T4',
+      'TAN',
+      'パターン④【3列目頭・大波乱】3列目(地力・特注)1着 ➔ 2・3列目 ➔ 全相手',
+      '3列目1着固定',
+      `${tan4First.join(',')} → ${tan4Second.join(',')} → ${tan4Third.join(',')}`,
+      '3列目の地力上位馬・特注穴が1着で突き抜け、2・3列目で決まる大波乱仕様',
+      tan4Combos
+    ),
   ];
 
   return {
@@ -1157,6 +1469,7 @@ export default function Home() {
 
   const [targetRaceName, setTargetRaceName] = useState('');
   const [targetPlace, setTargetPlace] = useState('東京');
+  const [courseRailMessage, setCourseRailMessage] = useState('');
   const [courseRpci, setCourseRpci] = useState<number | null>(null);
   const [courseRpciType, setCourseRpciType] = useState<string>('');
   const [referenceBenchmarks, setReferenceBenchmarks] = useState<ReferenceBenchmarks | null>(null);
@@ -1176,6 +1489,10 @@ export default function Home() {
   const [customDirOverride, setCustomDirOverride] = useState<'AUTO' | 'LEFT' | 'RIGHT'>('AUTO');
   const [customStartMode, setCustomStartMode] = useState<StartModeType>('AUTO');
 
+  // ★Harville資金配分シミュレーター用の総予算＆配分モード
+  const [budgetYen, setBudgetYen] = useState<number>(3000);
+  const [allocMode, setAllocMode] = useState<'EV_FOCUS' | 'EQUAL_RETURN'>('EV_FOCUS');
+
   const [horses, setHorses] = useState<HorseData[]>([
     {
       wakuban: 1,
@@ -1189,6 +1506,8 @@ export default function Home() {
       condition_override: '1.00',
       condition_reason: '',
       training_rank: 'B',
+      training_4f: '',
+      training_1f: '',
       rotation_mult: 1.0,
       rotation_label: '',
       zenso_chakujun: 9,
@@ -1197,6 +1516,7 @@ export default function Home() {
       shussou_kaisuu: 0,
       pci: 50.0,
       pci_type: 'B',
+      early_3f_sec: 35.5,
       history_details: [],
     },
   ]);
@@ -1249,10 +1569,6 @@ export default function Home() {
     customDirOverride === 'AUTO' ? venueProfile.dir : customDirOverride;
   const startConfig = resolveStartConfig(activeVenueKey, courseType, distance, customStartMode);
 
-  /**
-   * ★修正済み: 依存配列にオブジェクト参照(startConfig/venueProfile)を含めずプリミティブ値のみを監視させることで、
-   * 毎フレームの再レンダリングでアニメーションが0秒にリセットされるバグを完全解消
-   */
   useEffect(() => {
     if (!isRacing || !results || results.length === 0) {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -1512,6 +1828,8 @@ export default function Home() {
           condition_override: String(h.condition_override ?? '1.00'),
           condition_reason: String(h.condition_reason ?? ''),
           training_rank: String(h.training_rank ?? 'B'),
+          training_4f: '',
+          training_1f: '',
           rotation_mult: Number(h.rotation_mult ?? 1.0),
           rotation_label: String(h.rotation_label ?? ''),
           zenso_chakujun: Number(h.zenso_chakujun ?? 9),
@@ -1520,6 +1838,7 @@ export default function Home() {
           shussou_kaisuu: Number(h.shussou_kaisuu ?? 0),
           pci: Number(h.pci ?? 50.0),
           pci_type: String(h.pci_type ?? 'B'),
+          early_3f_sec: Number(h.early_3f_sec ?? 35.5),
           history_details: Array.isArray(h.history_details) ? h.history_details : [],
         }));
         setHorses(mappedHorses);
@@ -1528,6 +1847,7 @@ export default function Home() {
         setDistance(Number(data.distance || 2000));
         setWeather(data.weather || '晴');
         setTrackCondition(data.track_condition || '良');
+        setCourseRailMessage(data.course_rail_message || '');
 
         const recPace = data.recommended_pace || 'M_JIRIKI';
         setExpectedPace(PACE_SCENARIOS[recPace] ? recPace : 'M_JIRIKI');
@@ -1546,7 +1866,7 @@ export default function Home() {
         setAutoStatus(data.auto_status || null);
 
         alert(
-          `${mappedHorses.length}頭の出馬表・過去5走履歴・前年/今年度タイム・コース形状データを取得しました！\n\n` +
+          `${mappedHorses.length}頭の出馬表・過去5走履歴・前年/今年度タイム・包まれリスク印を取得しました！\n\n` +
             `${data.auto_status?.odds_message || ''}\n\n` +
             `${data.auto_status?.pace_message || ''}\n\n` +
             `${data.auto_status?.bias_message || ''}\n\n` +
@@ -1583,6 +1903,15 @@ export default function Home() {
       field === 'rotation_label'
     ) {
       current[field] = value;
+    } else if (field === 'training_4f' || field === 'training_1f') {
+      current[field] = value;
+      const autoRank = evaluateTrainingRankFromClock(
+        field === 'training_4f' ? value : current.training_4f,
+        field === 'training_1f' ? value : current.training_1f
+      );
+      if (autoRank) {
+        current.training_rank = autoRank;
+      }
     } else if (field !== 'history_details') {
       current[field] = parseFloat(value) || 0;
     }
@@ -1780,6 +2109,73 @@ export default function Home() {
     </div>
   );
 
+  const renderPatternCard = (
+    pat: PatternTicketItem,
+    borderClass: string,
+    titleClass: string,
+    badgeBgClass: string
+  ) => (
+    <div
+      key={pat.id}
+      className={`bg-gray-950/90 border ${borderClass} rounded-lg p-3 flex flex-col justify-between`}
+    >
+      <div>
+        <div className="flex justify-between items-center gap-2 border-b border-gray-800 pb-1.5 mb-2">
+          <span className={`font-extrabold text-xs md:text-sm ${titleClass}`}>{pat.title}</span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[10px] bg-gray-800 text-yellow-300 border border-yellow-600/60 px-2 py-0.5 rounded font-mono font-bold">
+              合成 {pat.syntheticOdds}倍
+            </span>
+            <span className={`text-xs ${badgeBgClass} font-black px-2 py-0.5 rounded whitespace-nowrap`}>
+              計 {pat.count} 点
+            </span>
+          </div>
+        </div>
+        <div className="font-mono text-xs font-extrabold text-yellow-300 mb-1">
+          {pat.structureText}
+        </div>
+        <p className="text-[11px] text-gray-400 mb-2 leading-snug">{pat.subNote}</p>
+      </div>
+
+      {/* 各買い目の100円単位推奨配分＆推定オッズ一覧 */}
+      <div className="bg-black/60 p-2 rounded border border-gray-800 max-h-36 overflow-y-auto">
+        <div className="flex justify-between items-center text-[10px] text-gray-400 border-b border-gray-800 pb-1 mb-1 font-bold">
+          <span>買い目 (推定オッズ / 妙味)</span>
+          <span>推奨配分 (想定払戻)</span>
+        </div>
+        <div className="space-y-1 font-mono text-[11px]">
+          {pat.allocations.map((al, idx) => (
+            <div
+              key={idx}
+              className="flex justify-between items-center border-b border-gray-900/80 last:border-0 py-0.5"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-white font-bold">{al.combo}</span>
+                <span className="text-gray-400 text-[10px]">({al.estOdds}倍)</span>
+                {al.isValuePick && (
+                  <span className="bg-pink-900/80 text-pink-200 border border-pink-500/60 px-1 rounded text-[9px] font-bold">
+                    🔥妙味EV{al.ev}
+                  </span>
+                )}
+                {al.isTrigamiWarn && (
+                  <span className="bg-amber-950 text-amber-300 border border-amber-600/60 px-1 rounded text-[9px]">
+                    ⚠️安目
+                  </span>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-emerald-300 font-extrabold">{al.stakeYen}円</span>
+                <span className="text-gray-400 text-[10px] ml-1">
+                  (➔{al.expectedReturnYen.toLocaleString()}円)
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   const startGatePt = getHorseSimPosition(
     0.0,
     effectiveDir,
@@ -1816,7 +2212,12 @@ export default function Home() {
       )
     : null;
 
-  const axisDefensePlan = buildAxisDefensePlan(diagnosisResults, bettingTickets);
+  const axisDefensePlan = buildAxisDefensePlan(
+    diagnosisResults,
+    bettingTickets,
+    budgetYen,
+    allocMode
+  );
 
   return (
     <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
@@ -1829,7 +2230,7 @@ export default function Home() {
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-grow w-full">
             <label className="text-sm text-gray-400 block mb-2 font-bold">
-              STEP 1: 🌐 レースIDから出馬表・過去5走履歴・前年/今年度タイム・コース形状を全自動取得
+              STEP 1: 🌐 レースIDから出馬表・過去5走履歴・前年/今年度タイム・包まれリスク印を全自動取得
             </label>
             <input
               type="text"
@@ -1851,7 +2252,7 @@ export default function Home() {
         {/* STEP 2 */}
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
           <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-300">
-            STEP 2: コース形状・前年/今年度タイム基準 ＆ 2段階全頭診断
+            STEP 2: コース形状・前年/今年度タイム基準 ＆ 追切時計・2段階全頭診断
           </h2>
 
           {targetRaceName && (
@@ -1890,6 +2291,9 @@ export default function Home() {
                   【コース起伏特徴：{venueProfile.slopeTitle}】
                 </span>
                 {venueProfile.featureText}
+                {courseRailMessage && (
+                  <span className="block mt-1 text-emerald-300 font-bold">{courseRailMessage}</span>
+                )}
               </div>
             </div>
           )}
@@ -2135,22 +2539,22 @@ export default function Home() {
                     {horse.umaban}
                   </div>
                   <div className="flex-grow flex flex-col gap-1.5 w-full">
-                    <div className="flex flex-wrap md:flex-nowrap gap-1.5 items-center">
+                    <div className="flex flex-wrap gap-1.5 items-center">
                       <input
                         type="text"
                         value={horse.bamei}
                         onChange={(e) => handleChange(index, 'bamei', e.target.value)}
                         placeholder="馬名"
-                        className="w-[40%] md:w-36 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-[38%] md:w-32 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                       <input
                         type="text"
                         value={horse.kishu}
                         onChange={(e) => handleChange(index, 'kishu', e.target.value)}
                         placeholder="騎手"
-                        className="w-[26%] md:w-20 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm border border-blue-800/50 focus:outline-none"
+                        className="w-[24%] md:w-20 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm border border-blue-800/50 focus:outline-none"
                       />
-                      <div className="w-[26%] md:w-20 relative">
+                      <div className="w-[24%] md:w-20 relative">
                         <input
                           type="number"
                           step="0.1"
@@ -2166,7 +2570,7 @@ export default function Home() {
                       <select
                         value={horse.kyakushitsu}
                         onChange={(e) => handleChange(index, 'kyakushitsu', e.target.value)}
-                        className="w-[24%] md:w-16 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1.5 border border-purple-700 focus:outline-none"
+                        className="w-[22%] md:w-16 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1.5 border border-purple-700 focus:outline-none"
                       >
                         <option value="1">逃げ</option>
                         <option value="2">先行</option>
@@ -2192,10 +2596,35 @@ export default function Home() {
                         <span className="text-[10px] text-gray-500">)</span>
                       </div>
 
+                      {/* ★新機能: 追切時計（4F・1F）入力による自動S/A/B/C判定ボックス */}
+                      <div
+                        className="flex items-center gap-1 bg-gray-950 rounded px-1.5 py-1 border border-amber-700/60"
+                        title="追切の4F時計(例:51.2)と1F時計(例:11.3)を入力すると自動でS/A/B/Cランクを判定します"
+                      >
+                        <span className="text-[9px] text-amber-400 font-bold">追切時計</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={horse.training_4f || ''}
+                          onChange={(e) => handleChange(index, 'training_4f', e.target.value)}
+                          placeholder="4F"
+                          className="w-10 bg-gray-800 text-amber-200 font-mono text-[11px] text-center rounded px-1 py-0.5 focus:outline-none"
+                        />
+                        <span className="text-[9px] text-gray-500">-</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={horse.training_1f || ''}
+                          onChange={(e) => handleChange(index, 'training_1f', e.target.value)}
+                          placeholder="1F"
+                          className="w-10 bg-gray-800 text-amber-200 font-mono text-[11px] text-center rounded px-1 py-0.5 focus:outline-none"
+                        />
+                      </div>
+
                       <select
                         value={horse.training_rank || 'B'}
                         onChange={(e) => handleChange(index, 'training_rank', e.target.value)}
-                        className={`w-[36%] md:w-28 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${
+                        className={`w-[34%] md:w-28 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${
                           horse.training_rank === 'S'
                             ? 'bg-amber-900/70 text-yellow-300 border-yellow-500'
                             : horse.training_rank === 'A'
@@ -2204,7 +2633,6 @@ export default function Home() {
                                 ? 'bg-red-950 text-red-300 border-red-600'
                                 : 'bg-gray-800 text-gray-300 border-gray-600'
                         }`}
-                        title="最終追い切り評価（Cに設定すると2列目本線から除外されます）"
                       >
                         <option value="S">🔥 追切S:抜群 (1.05倍)</option>
                         <option value="A">✨ 追切A:好調 (1.03倍)</option>
@@ -2215,7 +2643,7 @@ export default function Home() {
                       <select
                         value={horse.condition_override}
                         onChange={(e) => handleChange(index, 'condition_override', e.target.value)}
-                        className={`w-[38%] md:w-32 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${horse.condition_override === '1.00' ? 'bg-gray-800 text-gray-400 border-gray-700' : Number(horse.condition_override) > 1.0 ? 'bg-green-900/50 text-green-300 border-green-600' : 'bg-red-900/50 text-red-300 border-red-600'}`}
+                        className={`w-[36%] md:w-28 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${horse.condition_override === '1.00' ? 'bg-gray-800 text-gray-400 border-gray-700' : Number(horse.condition_override) > 1.0 ? 'bg-green-900/50 text-green-300 border-green-600' : 'bg-red-900/50 text-red-300 border-red-600'}`}
                       >
                         <option value="1.04">↑ 好仕上 (1.04倍)</option>
                         <option value="1.03">↑ 充実/絞込 (1.03倍)</option>
@@ -2231,7 +2659,18 @@ export default function Home() {
                     <div className="flex flex-wrap items-center justify-between gap-2 pl-1">
                       {horse.condition_reason && (
                         <div className="text-[10px] text-gray-400">
-                          💡 自動解析: <span className="text-gray-200">{horse.condition_reason}</span>
+                          💡 自動解析:{' '}
+                          <span
+                            className={`font-bold ${
+                              horse.condition_reason.includes('🚨')
+                                ? 'text-red-300'
+                                : horse.condition_reason.includes('⚠️')
+                                  ? 'text-amber-300'
+                                  : 'text-gray-200'
+                            }`}
+                          >
+                            {horse.condition_reason}
+                          </span>
                         </div>
                       )}
 
@@ -2313,7 +2752,7 @@ export default function Home() {
             >
               {isDiagnosing
                 ? '分析中...'
-                : '📊 第2段階：枠・バイアス・ローテ・追切・高速上がりを加味して最終診断 ＆ 全パターン買い目出力！'}
+                : '📊 第2段階：包まれリスク・ラップギア・追切を加味して最終診断 ＆ 資金配分出力！'}
             </button>
           </div>
         </div>
@@ -2323,7 +2762,7 @@ export default function Home() {
           <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4">
               <h2 className="text-xl md:text-2xl font-bold text-indigo-400">
-                STEP 3: 📊 2段階AI全頭診断 ＆ 戦術別4パターン買い目レポート
+                STEP 3: 📊 2段階AI全頭診断 ＆ 合成オッズ・予算配分付き4パターン買い目
               </h2>
               <div className="flex gap-2 bg-gray-900 p-1 rounded-lg border border-gray-700">
                 <button
@@ -2344,7 +2783,7 @@ export default function Home() {
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  ② 展開・バイアス・ローテ加味順 (Stage 2)
+                  ② 展開・包まれ・ギア加味順 (Stage 2)
                 </button>
               </div>
             </div>
@@ -2387,7 +2826,7 @@ export default function Home() {
             {bettingTickets && (
               <div className="mb-8 bg-gray-950 border-2 border-indigo-500/70 rounded-xl p-4 md:p-6 shadow-xl">
                 <h3 className="text-base md:text-lg font-extrabold text-yellow-400 mb-4 flex items-center gap-2 border-b border-gray-800 pb-2">
-                  🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 戦術別4パターン買い目
+                  🎯 2段階指数ロジックによる自動構築フォーメーション ＆ 資金配分シミュレーター
                 </h3>
 
                 {marksSummary && (
@@ -2647,58 +3086,86 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* ワイド(2列目×3列目)・3連複・3連単 各4パターン戦術ボード ＋ 予算別資金配分シミュレーター */}
                 {axisDefensePlan && (
                   <div className="space-y-6">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-t border-gray-800 pt-4">
+                    <div className="bg-gray-900 border border-indigo-500/50 rounded-xl p-3.5 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                       <div>
-                        <h4 className="text-sm md:text-base font-black text-white">
-                          🔥 戦術別 4パターン買い目ボード（2列目×3列目ワイド ／ 3連複4種 ／ 3連単4種）
+                        <h4 className="text-sm md:text-base font-black text-white flex items-center gap-2">
+                          <span>💰 Harville合成オッズ ＆ 自動資金配分シミュレーター</span>
                         </h4>
                         <p className="text-[11px] text-gray-400">
-                          レースの波乱度やオッズに合わせて、各券種4つの戦略パターンから最適な買い目を選択できます。
+                          1パターンあたりの予算を設定すると、推定オッズとAI期待値(EV)から100円単位の最適配分額を自動算出します。
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-1.5 bg-gray-900 p-1 rounded-lg border border-gray-700 text-xs">
-                        <button
-                          onClick={() => setActivePatternTab('ALL')}
-                          className={`px-2.5 py-1 rounded font-bold transition ${
-                            activePatternTab === 'ALL'
-                              ? 'bg-indigo-600 text-white'
-                              : 'text-gray-400 hover:text-white'
-                          }`}
+
+                      <div className="flex flex-wrap items-center gap-2.5 text-xs w-full md:w-auto">
+                        <div className="flex items-center gap-1.5 bg-gray-950 px-2.5 py-1.5 rounded-lg border border-gray-700">
+                          <span className="text-gray-400 font-bold">予算:</span>
+                          <input
+                            type="number"
+                            step="500"
+                            min="500"
+                            value={budgetYen}
+                            onChange={(e) => setBudgetYen(Math.max(500, Number(e.target.value)))}
+                            className="w-20 bg-gray-800 text-yellow-300 font-mono font-extrabold text-right rounded px-1.5 py-0.5 border border-yellow-600/50 focus:outline-none"
+                          />
+                          <span className="text-gray-400">円</span>
+                        </div>
+
+                        <select
+                          value={allocMode}
+                          onChange={(e) =>
+                            setAllocMode(e.target.value as 'EV_FOCUS' | 'EQUAL_RETURN')
+                          }
+                          className="bg-indigo-950 text-indigo-200 font-bold rounded-lg px-2.5 py-1.5 border border-indigo-500 focus:outline-none"
                         >
-                          全表示
-                        </button>
-                        <button
-                          onClick={() => setActivePatternTab('WIDE')}
-                          className={`px-2.5 py-1 rounded font-bold transition ${
-                            activePatternTab === 'WIDE'
-                              ? 'bg-pink-600 text-white'
-                              : 'text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          2・3列目ワイド (4種)
-                        </button>
-                        <button
-                          onClick={() => setActivePatternTab('PUKU')}
-                          className={`px-2.5 py-1 rounded font-bold transition ${
-                            activePatternTab === 'PUKU'
-                              ? 'bg-emerald-600 text-white'
-                              : 'text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          3連複 (4種)
-                        </button>
-                        <button
-                          onClick={() => setActivePatternTab('TAN')}
-                          className={`px-2.5 py-1 rounded font-bold transition ${
-                            activePatternTab === 'TAN'
-                              ? 'bg-amber-500 text-gray-950'
-                              : 'text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          3連単 (4種)
-                        </button>
+                          <option value="EV_FOCUS">🔥 AI期待値・穴目厚め配分</option>
+                          <option value="EQUAL_RETURN">⚖️ 払戻均等・トリガミ防止配分</option>
+                        </select>
+
+                        <div className="flex flex-wrap gap-1 bg-gray-950 p-1 rounded-lg border border-gray-700">
+                          <button
+                            onClick={() => setActivePatternTab('ALL')}
+                            className={`px-2 py-1 rounded font-bold transition ${
+                              activePatternTab === 'ALL'
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            全表示
+                          </button>
+                          <button
+                            onClick={() => setActivePatternTab('WIDE')}
+                            className={`px-2 py-1 rounded font-bold transition ${
+                              activePatternTab === 'WIDE'
+                                ? 'bg-pink-600 text-white'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            ワイド(4種)
+                          </button>
+                          <button
+                            onClick={() => setActivePatternTab('PUKU')}
+                            className={`px-2 py-1 rounded font-bold transition ${
+                              activePatternTab === 'PUKU'
+                                ? 'bg-emerald-600 text-white'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            3連複(4種)
+                          </button>
+                          <button
+                            onClick={() => setActivePatternTab('TAN')}
+                            className={`px-2 py-1 rounded font-bold transition ${
+                              activePatternTab === 'TAN'
+                                ? 'bg-amber-500 text-gray-950'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            3連単(4種)
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -2713,32 +3180,14 @@ export default function Home() {
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                          {axisDefensePlan.widePatterns.map((pat) => (
-                            <div
-                              key={pat.id}
-                              className="bg-gray-950/90 border border-pink-700/50 rounded-lg p-3 flex flex-col justify-between"
-                            >
-                              <div>
-                                <div className="flex justify-between items-center gap-2 border-b border-gray-800 pb-1.5 mb-2">
-                                  <span className="font-extrabold text-xs md:text-sm text-pink-200">
-                                    {pat.title}
-                                  </span>
-                                  <span className="text-xs bg-pink-600 text-white font-black px-2 py-0.5 rounded whitespace-nowrap">
-                                    計 {pat.count} 点
-                                  </span>
-                                </div>
-                                <div className="font-mono text-xs font-extrabold text-yellow-300 mb-1">
-                                  {pat.structureText}
-                                </div>
-                                <p className="text-[11px] text-gray-400 mb-2 leading-snug">
-                                  {pat.subNote}
-                                </p>
-                              </div>
-                              <div className="text-[11px] text-pink-100 font-mono bg-black/50 p-2 rounded border border-gray-800 max-h-16 overflow-y-auto">
-                                {pat.combos.length > 0 ? pat.combos.join(' / ') : '該当馬なし'}
-                              </div>
-                            </div>
-                          ))}
+                          {axisDefensePlan.widePatterns.map((pat) =>
+                            renderPatternCard(
+                              pat,
+                              'border-pink-700/50',
+                              'text-pink-200',
+                              'bg-pink-600 text-white'
+                            )
+                          )}
                         </div>
                       </div>
                     )}
@@ -2754,32 +3203,14 @@ export default function Home() {
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                          {axisDefensePlan.sanrenpukuPatterns.map((pat) => (
-                            <div
-                              key={pat.id}
-                              className="bg-gray-950/90 border border-emerald-700/50 rounded-lg p-3 flex flex-col justify-between"
-                            >
-                              <div>
-                                <div className="flex justify-between items-center gap-2 border-b border-gray-800 pb-1.5 mb-2">
-                                  <span className="font-extrabold text-xs md:text-sm text-emerald-200">
-                                    {pat.title}
-                                  </span>
-                                  <span className="text-xs bg-emerald-600 text-white font-black px-2 py-0.5 rounded whitespace-nowrap">
-                                    計 {pat.count} 点
-                                  </span>
-                                </div>
-                                <div className="font-mono text-xs font-extrabold text-yellow-300 mb-1">
-                                  {pat.structureText}
-                                </div>
-                                <p className="text-[11px] text-gray-400 mb-2 leading-snug">
-                                  {pat.subNote}
-                                </p>
-                              </div>
-                              <div className="text-[11px] text-emerald-100 font-mono bg-black/50 p-2 rounded border border-gray-800 max-h-16 overflow-y-auto">
-                                {pat.combos.length > 0 ? pat.combos.join(' / ') : '該当馬なし'}
-                              </div>
-                            </div>
-                          ))}
+                          {axisDefensePlan.sanrenpukuPatterns.map((pat) =>
+                            renderPatternCard(
+                              pat,
+                              'border-emerald-700/50',
+                              'text-emerald-200',
+                              'bg-emerald-600 text-white'
+                            )
+                          )}
                         </div>
                       </div>
                     )}
@@ -2795,32 +3226,14 @@ export default function Home() {
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                          {axisDefensePlan.sanrentanPatterns.map((pat) => (
-                            <div
-                              key={pat.id}
-                              className="bg-gray-950/90 border border-amber-600/50 rounded-lg p-3 flex flex-col justify-between"
-                            >
-                              <div>
-                                <div className="flex justify-between items-center gap-2 border-b border-gray-800 pb-1.5 mb-2">
-                                  <span className="font-extrabold text-xs md:text-sm text-amber-200">
-                                    {pat.title}
-                                  </span>
-                                  <span className="text-xs bg-amber-500 text-gray-950 font-black px-2 py-0.5 rounded whitespace-nowrap">
-                                    計 {pat.count} 点
-                                  </span>
-                                </div>
-                                <div className="font-mono text-xs font-extrabold text-pink-300 mb-1">
-                                  {pat.structureText}
-                                </div>
-                                <p className="text-[11px] text-gray-400 mb-2 leading-snug">
-                                  {pat.subNote}
-                                </p>
-                              </div>
-                              <div className="text-[11px] text-amber-100 font-mono bg-black/50 p-2 rounded border border-gray-800 max-h-20 overflow-y-auto">
-                                {pat.combos.length > 0 ? pat.combos.join(' / ') : '該当馬なし'}
-                              </div>
-                            </div>
-                          ))}
+                          {axisDefensePlan.sanrentanPatterns.map((pat) =>
+                            renderPatternCard(
+                              pat,
+                              'border-amber-600/50',
+                              'text-amber-200',
+                              'bg-amber-500 text-gray-950'
+                            )
+                          )}
                         </div>
                       </div>
                     )}
@@ -2829,7 +3242,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* 各馬の2段階指数カード一覧 */}
+            {/* 各馬の2段階指数カード一覧（包まれリスク印・瞬発ギア印・過去5走テーブル付き） */}
             <div className="grid md:grid-cols-2 gap-4">
               {displayedDiagnosis.map((horse) => {
                 const matchLabel = getScenarioMatchLabel(horse);
@@ -2894,12 +3307,32 @@ export default function Home() {
                             </span>
                           )}
                         </div>
+
+                        {/* ★包まれリスク・1強保護・単騎ハナ・極限瞬発ギアの専用ハイライトバッジ */}
+                        {horse.tactical_badges && horse.tactical_badges.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-0.5">
+                            {horse.tactical_badges.map((bText, bIdx) => (
+                              <span
+                                key={bIdx}
+                                className={`px-2 py-0.5 rounded text-[10px] border ${getTacticalBadgeStyle(bText)}`}
+                              >
+                                {bText}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getPciBadgeStyle(horse.pci_type)}`}
                           >
                             好走PCI: {horse.pci} ({getPciLabelText(horse.pci_type)})
                           </span>
+                          {horse.early_3f_sec && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border border-gray-700 bg-gray-800 text-gray-300">
+                              テン3F目安:{horse.early_3f_sec}秒
+                            </span>
+                          )}
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold border border-gray-600 bg-gray-800 text-gray-300">
                             {horse.bataijuu}kg (
                             {horse.weight_change > 0
@@ -2926,7 +3359,8 @@ export default function Home() {
                                 horse.rotation_label.includes('叩き2走目') ||
                                 horse.rotation_label.includes('叩き3走目')
                                   ? 'bg-cyan-950/90 text-cyan-200 border-cyan-500'
-                                  : horse.rotation_label.includes('⚠️')
+                                  : horse.rotation_label.includes('🚨') ||
+                                      horse.rotation_label.includes('⚠️')
                                     ? 'bg-red-950/80 text-red-200 border-red-600'
                                     : 'bg-gray-800 text-gray-300 border-gray-600'
                               }`}
@@ -3107,7 +3541,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 主要5場レイアウト・回り方向・スタート位置 リアルタイム切替バー */}
               <div className="mb-3 bg-gray-950/90 border border-gray-800 rounded-xl p-2.5 flex flex-wrap items-center gap-2.5 text-xs">
                 <div className="flex items-center gap-1.5">
                   <span className="text-gray-400 font-bold">競馬場図:</span>
