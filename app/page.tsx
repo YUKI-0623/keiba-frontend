@@ -220,7 +220,6 @@ interface VenueProfile {
   lapMeter: number;
   slopeTitle: string;
   featureText: string;
-  /** 1周(0.0=ゴール地点〜1.0=ゴール地点)における標高プロファイル(m) */
   getElevationAtLapPos: (lapPos: number) => number;
   slopeZones: { startLap: number; endLap: number; label: string; type: 'UP' | 'DOWN' }[];
 }
@@ -416,17 +415,6 @@ function getVenueProfile(placeName: string): VenueProfile {
   return VENUE_PROFILES['東京'];
 }
 
-/**
- * トラック周回位置 (lapPos: 0.0=ゴール地点 〜 1.0=1周後のゴール地点) と
- * 内外レーンオフセット (laneOffsetPx: 0=最内ラチ沿い 〜 +26=大外) から
- * SVG上の (x, y) 座標と進行方向角度を算出する関数
- *
- * 【コース図の向き】
- * - 手前（下側 y=240）が常に「スタンド前直線（ホームストレッチ）」
- * - 奥（上側 y=64）が常に「向正面（バックストレッチ）」
- * - 左回り（LEFT: 東京・新潟・中京）: スタンド前を右→左へ走り、左端寄りのゴール板へ（反時計回り）
- * - 右回り（RIGHT: 中山・京都・阪神等）: スタンド前を左→右へ走り、右端寄りのゴール板へ（時計回り）
- */
 function getTrackPointAndNormal(
   lapPosRaw: number,
   dir: 'LEFT' | 'RIGHT',
@@ -434,14 +422,11 @@ function getTrackPointAndNormal(
 ): { x: number; y: number } {
   const u = ((lapPosRaw % 1) + 1) % 1;
 
-  // トラック基本ジオメトリ: 中心(400, 152), 直線長さ L=380 (x=210..590), コーナー半径 R=88 (y=64..240)
   const L = 380;
   const R = 88;
-  const arcLen = Math.PI * R; // 約276.46
-  const totalPerim = 2 * L + 2 * arcLen; // 約1312.92
+  const arcLen = Math.PI * R;
+  const totalPerim = 2 * L + 2 * arcLen;
 
-  // ゴール板をホームストレッチの終端近く（直線残り75%地点）に設定
-  // ホームストレッチ開始点(4角出口)を s=0 とすると、ゴール板は sGoal = L * 0.78 = 296.4
   const sGoal = L * 0.78;
   const s = (sGoal + u * totalPerim) % totalPerim;
 
@@ -451,11 +436,6 @@ function getTrackPointAndNormal(
   let outNy = 1;
 
   if (dir === 'RIGHT') {
-    // 右回り（時計回り）:
-    // s=0..L: 下側直線 (x: 210 -> 590, y: 240) 外側は下(+y)
-    // s=L..L+arcLen: 右コーナー(1〜2角) 中心(590, 152), 角度 +90度(π/2) -> -90度(-π/2)
-    // s=L+arcLen..2L+arcLen: 上側向正面 (x: 590 -> 210, y: 64) 外側は上(-y)
-    // s=2L+arcLen..total: 左コーナー(3〜4角) 中心(210, 152), 角度 -90度(-π/2) -> +90度(π/2)
     if (s < L) {
       baseX = 210 + s;
       baseY = 240;
@@ -483,11 +463,6 @@ function getTrackPointAndNormal(
       outNy = Math.sin(theta);
     }
   } else {
-    // 左回り（反時計回り）:
-    // s=0..L: 下側直線 (x: 590 -> 210, y: 240) 外側は下(+y)
-    // s=L..L+arcLen: 左コーナー(1〜2角) 中心(210, 152), 角度 +90度(π/2) -> +270度(3π/2)
-    // s=L+arcLen..2L+arcLen: 上側向正面 (x: 210 -> 590, y: 64) 外側は上(-y)
-    // s=2L+arcLen..total: 右コーナー(3〜4角) 中心(590, 152), 角度 -90度(-π/2) -> +90度(π/2)
     if (s < L) {
       baseX = 590 - s;
       baseY = 240;
@@ -930,7 +905,7 @@ function buildAxisDefensePlan(
       title: 'パターン②【地力逆襲】3列目(地力上位)軸 ➔ 2・3列目流し',
       badge: '地力救済軸',
       structureText: `軸: ${row3JirikiAxis.join(', ')}番 ➔ 相手: ${wide2Targets.join(', ')}番`,
-      subNote: '外枠等で3列目に回った「素の地力上位馬(ダノンデサイル型)」から2・3列目へ流す勝負手',
+      subNote: '外枠等で3列目に回った「素の地力上位馬」から2・3列目へ流す勝負手',
       combos: wide2Combos,
       count: wide2Combos.length,
     },
@@ -939,7 +914,7 @@ function buildAxisDefensePlan(
       title: 'パターン③【一撃回収】特注穴(☆妙味トップ)軸 ➔ 2・3列目流し',
       badge: '妙味特注軸',
       structureText: `特注軸: ${tokuchuAxis}番 ➔ 相手: ${wide3Targets.join(', ')}番`,
-      subNote: '妙味指数トップの伏兵(ネブラディスク型)から2・3列目の実力馬へぶつける高配当ワイド',
+      subNote: '妙味指数トップの伏兵から2・3列目の実力馬へぶつける高配当ワイド',
       combos: wide3Combos,
       count: wide3Combos.length,
     },
@@ -1043,7 +1018,7 @@ function buildAxisDefensePlan(
       title: 'パターン②【2着ヒモ荒れ】1列目(◎)1着固定 ➔ 3列目2着 ➔ 2・3列目',
       badge: '3列目2着抜擢',
       structureText: `${row1Umabans.join(',')} → ${tan2Second.join(',')} → ${allRow2Row3.join(',')}`,
-      subNote: '本命(◎)が勝ち、2着に3列目の地力馬・穴馬(ネブラディスク型)が突っ込む高配当1着固定',
+      subNote: '本命(◎)が勝ち、2着に3列目の地力馬・穴馬が突っ込む高配当1着固定',
       combos: tan2Combos,
       count: tan2Combos.length,
     },
@@ -1061,7 +1036,7 @@ function buildAxisDefensePlan(
       title: 'パターン④【3列目頭・大波乱】3列目(地力・特注)1着 ➔ 2・3列目 ➔ 全相手',
       badge: '3列目1着固定',
       structureText: `${tan4First.join(',')} → ${tan4Second.join(',')} → ${tan4Third.join(',')}`,
-      subNote: '天皇賞(秋)の⑰→⑩→③のように、3列目の地力上位馬・特注穴が1着で突き抜ける大波乱仕様',
+      subNote: '3列目の地力上位馬・特注穴が1着で突き抜け、2・3列目で決まる大波乱仕様',
       combos: tan4Combos,
       count: tan4Combos.length,
     },
@@ -1168,9 +1143,6 @@ export default function Home() {
 
   const venueProfile = getVenueProfile(targetPlace || '東京');
 
-  /**
-   * ★新エンジン: 60fps リアルタイム隊列・まくり・コース起伏連動シミュレーション
-   */
   useEffect(() => {
     if (!isRacing || !results || results.length === 0) {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -1182,13 +1154,11 @@ export default function Home() {
     const totalLaps = Math.max(0.55, distance / lapMeter);
     const startLapPos = (((1.0 - (totalLaps % 1)) % 1) + 1) % 1;
 
-    // 各馬の脚質・まくり属性・レーン・区間ラッププロファイルを事前構築
     const horseProfiles = results.map((r) => {
       const hInput = horses.find((h) => h.umaban === r.umaban);
       const kyaku = hInput ? Math.round(Number(hInput.kyakushitsu)) : 2;
       const waku = hInput ? Number(hInput.wakuban || r.umaban) : r.umaban;
 
-      // 過去走履歴から「まくり実績（通過順で3頭以上まくった履歴）」を判定
       let hasMakuriHistory = false;
       const hist = hInput?.history_details || [];
       for (const hd of hist) {
@@ -1202,7 +1172,6 @@ export default function Home() {
         }
       }
 
-      // まくり発動条件: (まくり履歴あり or ロンスパ戦の差し・追込で上位5着以内 or 追込で3着以内)
       const isMakuriHorse =
         (hasMakuriHistory && kyaku >= 2 && r.rank <= 7) ||
         ((expectedPace === 'S_LONSPA' || expectedPace === 'M_LONSPA') &&
@@ -1210,7 +1179,6 @@ export default function Home() {
           r.rank <= 4) ||
         (kyaku === 4 && r.rank <= 2);
 
-      // 序盤・中盤の縦位置ラグ（0.0=先頭 〜 0.14=後方待機）
       const seed = ((r.umaban * 17) % 10) / 1000;
       const earlyLag =
         kyaku === 1
@@ -1221,7 +1189,6 @@ export default function Home() {
               ? 0.062 + seed * 3.0
               : 0.098 + seed * 3.0;
 
-      // 勝負所(t=0.68)での位置ラグ（まくり馬はここで一気に先頭集団の直後まで進出！）
       const midLag = isMakuriHorse
         ? Math.max(0.008, earlyLag * 0.22)
         : kyaku === 1
@@ -1232,10 +1199,8 @@ export default function Home() {
               ? 0.052 + seed * 2.5
               : 0.082 + seed * 2.5;
 
-      // ゴール(t=1.0)での着差ラグ（1着馬が1.000に到達した瞬間、下位馬がどれだけ後ろにいるか）
       const finishLag = (r.rank - 1) * 0.0052 + (r.rank > 5 ? (r.rank - 5) * 0.002 : 0);
 
-      // 内外のレーンオフセット（0px=内ラチ沿い 〜 24px=大外）
       const wakuRatio = Math.max(0, Math.min(1, (waku - 1) / Math.max(1, totalH - 1)));
       const startLane = 2 + wakuRatio * 20;
       const cruiseLane =
@@ -1247,7 +1212,6 @@ export default function Home() {
               ? 5.5 + wakuRatio * 12.0
               : 4.5 + wakuRatio * 13.0;
 
-      // まくり時・直線時の外持ち出しレーン
       const makuriLane = isMakuriHorse ? Math.min(25, cruiseLane + 11.0) : cruiseLane;
       const straightLane =
         r.rank <= 5 && kyaku >= 3
@@ -1272,7 +1236,7 @@ export default function Home() {
       };
     });
 
-    const totalDurationMs = 14200; // 約14.2秒でゴール、その後結果ポップアップ表示
+    const totalDurationMs = 14200;
     const startTime = performance.now();
 
     const step = (now: number) => {
@@ -1280,7 +1244,6 @@ export default function Home() {
       const t = Math.min(1.0, elapsed / totalDurationMs);
       setSimProgress(t);
 
-      // 実況フェーズラベルの更新
       const leadLapPos = (startLapPos + t * totalLaps) % 1;
       const activeSlope = venueProfile.slopeZones.find(
         (z) => leadLapPos >= z.startLap && leadLapPos <= z.endLap
@@ -1309,7 +1272,6 @@ export default function Home() {
         setSimPhaseLabel('🏁 ゴールイン！（写真判定・着順確定）');
       }
 
-      // 各馬の瞬間位置とレーンを計算
       const nextStates: SimHorseTrackState[] = horseProfiles.map((hp) => {
         let p = 0;
         const p1 = Math.max(0.02, 0.25 - hp.earlyLag * 0.65);
@@ -1331,7 +1293,6 @@ export default function Home() {
           p = p3 + spurtPower * (p4 - p3);
         }
 
-        // 内外レーン補間
         let lane = hp.cruiseLane;
         if (t < 0.2) {
           const lRatio = t / 0.2;
@@ -1682,13 +1643,11 @@ export default function Home() {
     </div>
   );
 
-  // シミュレーション画面用のスタート位置・ゴール位置・断面図パス生成
   const totalLapsForSim = Math.max(0.55, distance / (venueProfile.lapMeter || 1800));
   const startLapPosForSim = (((1.0 - (totalLapsForSim % 1)) % 1) + 1) % 1;
   const startGatePt = getTrackPointAndNormal(startLapPosForSim, venueProfile.dir, 12);
   const goalGatePt = getTrackPointAndNormal(0.0, venueProfile.dir, 0);
 
-  // 高低差断面図（0%〜100%）のSVGポリライン座標を生成
   const elevationSamples = 60;
   const maxElev = Math.max(3.5, venueProfile.elevationDiff + 0.5);
   const elevPoints: string[] = [];
@@ -1719,12 +1678,9 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2 text-center text-red-500">
-          PRO仕様 競馬本格シミュレーター (リアル隊列・まくり・コース高低差搭載版)
+        <h1 className="text-2xl md:text-3xl font-bold mb-6 text-center text-red-500">
+          PRO仕様 競馬本格シミュレーター
         </h1>
-        <p className="text-center text-gray-400 mb-8 text-xs md:text-sm font-bold">
-          [ ①前年/今年度時計 × ②過去5走履歴 × ③右/左回り・距離別スタート・高低差断面図 × ④リアル隊列・まくり ]
-        </p>
 
         {/* STEP 1 */}
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
@@ -1792,7 +1748,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* 前年（発走前）＆ 今年度（終了後）の1着ゴールタイム・1〜3着上がり3Fパネル */}
           {referenceBenchmarks && (
             <div className="mb-5 space-y-3">
               {referenceBenchmarks.current_year &&
@@ -2712,7 +2667,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* 各馬の2段階指数カード一覧（印バッジ＋過去5走詳細テーブル付き） */}
+            {/* 各馬の2段階指数カード一覧 */}
             <div className="grid md:grid-cols-2 gap-4">
               {displayedDiagnosis.map((horse) => {
                 const matchLabel = getScenarioMatchLabel(horse);
@@ -2944,7 +2899,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* ★刷新: リアル隊列・まくり・会場別右/左回り・距離別スタート・高低差断面図モーダル */}
+        {/* シミュレーションモーダル */}
         {isRacing && results && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm p-2 md:p-4">
             <div className="relative w-full max-w-5xl max-h-[96vh] overflow-y-auto bg-gray-900 rounded-2xl border border-gray-600 shadow-2xl p-3 md:p-5">
@@ -2981,24 +2936,20 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* メイントラック ＆ 高低差断面図 SVG */}
               <div className="relative w-full mx-auto bg-[#143627] rounded-xl overflow-hidden shadow-inner border-2 border-gray-700">
                 <svg
                   viewBox="0 0 800 395"
                   className="w-full h-auto block"
                   preserveAspectRatio="xMidYMid meet"
                 >
-                  {/* 背景芝エリア */}
                   <rect width="800" height="300" fill="#1b4332" />
 
-                  {/* 外ラチ・コース路盤（芝は濃緑、ダートは茶色） */}
                   <path
                     d="M 210 253 L 590 253 A 101 101 0 0 0 590 51 L 210 51 A 101 101 0 0 0 210 253 Z"
                     fill="none"
                     stroke={courseType === 'ダ' ? '#b08968' : '#2d6a4f'}
                     strokeWidth="36"
                   />
-                  {/* 内ラチライン */}
                   <path
                     d="M 210 240 L 590 240 A 88 88 0 0 0 590 64 L 210 64 A 88 88 0 0 0 210 240 Z"
                     fill="#143627"
@@ -3008,7 +2959,6 @@ export default function Home() {
                     opacity="0.75"
                   />
 
-                  {/* 中央インフィールド情報表示 */}
                   <text
                     x="400"
                     y="132"
@@ -3058,7 +3008,6 @@ export default function Home() {
                     {venueProfile.dir === 'LEFT' ? '右 ➔ 左（← GOAL）' : '左 ➔ 右（GOAL →）'}
                   </text>
 
-                  {/* コーナー名称ラベル */}
                   <text
                     x="105"
                     y="62"
@@ -3100,7 +3049,6 @@ export default function Home() {
                     {venueProfile.dir === 'LEFT' ? '第4コーナー' : '第1コーナー'}
                   </text>
 
-                  {/* 距離別のスタートゲート（STARTマーカー） */}
                   <g transform={`translate(${startGatePt.x}, ${startGatePt.y})`}>
                     <circle r="13" fill="#0284c7" stroke="#ffffff" strokeWidth="2" opacity="0.9" />
                     <text
@@ -3125,7 +3073,6 @@ export default function Home() {
                     </text>
                   </g>
 
-                  {/* ゴール板（GOALライン） */}
                   <g transform={`translate(${goalGatePt.x}, ${goalGatePt.y})`}>
                     <line x1="0" y1="-16" x2="0" y2="36" stroke="#ef4444" strokeWidth="5" />
                     <circle cx="0" cy="-20" r="6" fill="#ef4444" stroke="#ffffff" strokeWidth="1.5" />
@@ -3141,7 +3088,6 @@ export default function Home() {
                     </text>
                   </g>
 
-                  {/* 全出走馬の小径アイコン（r=8.5）＆ まくり・スパートエフェクト */}
                   {[...simHorseStates]
                     .sort((a, b) => b.rank - a.rank)
                     .map((hs) => {
@@ -3151,7 +3097,6 @@ export default function Home() {
                           key={`sim-h-${hs.umaban}`}
                           transform={`translate(${hs.x.toFixed(1)}, ${hs.y.toFixed(1)})`}
                         >
-                          {/* まくり発動中の赤発光リング */}
                           {hs.isMakuriActiveNow && (
                             <>
                               <circle
@@ -3173,7 +3118,6 @@ export default function Home() {
                               </text>
                             </>
                           )}
-                          {/* 直線上位スパート中の黄色リング */}
                           {!hs.isMakuriActiveNow && hs.isSpurtActiveNow && (
                             <circle
                               r="12"
@@ -3183,7 +3127,6 @@ export default function Home() {
                               opacity="0.85"
                             />
                           )}
-                          {/* 小さめの馬番サークル（r=8.5） */}
                           <circle
                             cx="0"
                             cy="0"
@@ -3206,7 +3149,6 @@ export default function Home() {
                       );
                     })}
 
-                  {/* 下部：コース高低差（起伏）断面図エリア (y=300..395) */}
                   <g transform="translate(0, 300)">
                     <rect width="800" height="95" fill="#090d16" />
                     <line x1="0" y1="0" x2="800" y2="0" stroke="#374151" strokeWidth="1.5" />
@@ -3215,7 +3157,6 @@ export default function Home() {
                       {venueProfile.elevationDiff}m）
                     </text>
 
-                    {/* 高低差ポリゴン＆ライン */}
                     <polygon points={elevPolygonPoints} fill="rgba(16, 185, 129, 0.22)" />
                     <polyline
                       points={elevPoints.join(' ')}
@@ -3224,7 +3165,6 @@ export default function Home() {
                       strokeWidth="2.5"
                     />
 
-                    {/* 基準ライン */}
                     <line
                       x1="40"
                       y1="78"
@@ -3257,7 +3197,6 @@ export default function Home() {
                       🏁 GOAL ({distance}m)
                     </text>
 
-                    {/* 現在走行位置インジケーター */}
                     <line
                       x1={currentElevX}
                       y1="22"
@@ -3278,7 +3217,6 @@ export default function Home() {
                   </g>
                 </svg>
 
-                {/* レース確定ポップアップ */}
                 {showResults && (
                   <div
                     className="absolute inset-0 bg-black/85 z-40 flex flex-col items-center justify-center p-2 md:p-4"
