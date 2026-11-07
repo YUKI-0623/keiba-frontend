@@ -385,9 +385,6 @@ function getVenueProfile(placeName: string): VenueProfile {
   return VENUE_PROFILES[norm] || VENUE_PROFILES['東京'];
 }
 
-/**
- * 追切時計（4F全体時計 × ラスト1F時計）から客観基準でS/A/B/Cランクを自動判定する関数
- */
 function evaluateTrainingRankFromClock(t4fStr?: string, t1fStr?: string): string | null {
   const t4f = parseFloat(t4fStr || '');
   const t1f = parseFloat(t1fStr || '');
@@ -414,9 +411,6 @@ function evaluateTrainingRankFromClock(t4fStr?: string, t1fStr?: string): string
   return null;
 }
 
-/**
- * Harville（ハービル）の公式による各買い目の推定オッズ・AI的中確率・資金配分計算エンジン
- */
 function computePatternAllocations(
   combos: string[],
   ticketType: 'WIDE' | 'PUKU' | 'TAN',
@@ -432,7 +426,6 @@ function computePatternAllocations(
     return { syntheticOdds: 0, totalStakeYen: 0, allocations: [] };
   }
 
-  // 市場単勝オッズから正規化した市場勝率 p_mkt と、AI指数から正規化したAI勝率 p_ai を構築
   const mktProbs: Record<number, number> = {};
   const aiProbs: Record<number, number> = {};
   let sumMkt = 0;
@@ -523,18 +516,15 @@ function computePatternAllocations(
     };
   });
 
-  // 合成オッズ = 1 / Σ(1 / estOdds)
   const invSum = rawItems.reduce((acc, item) => acc + 1.0 / Math.max(1.0, item.estOdds), 0);
   const syntheticOdds = invSum > 0 ? Number((1.0 / invSum).toFixed(2)) : 0;
 
-  // 予算配分（100円単位）
   const safeBudget = Math.max(combos.length * 100, Math.round(budgetYen / 100) * 100);
   const weights = rawItems.map((item) => {
     const baseEqualWeight = 1.0 / Math.max(1.1, item.estOdds);
     if (allocMode === 'EQUAL_RETURN') {
       return baseEqualWeight;
     }
-    // AI期待値・穴目重視モード: 均等払戻をベースにしつつ、EVが高い穴目の比率を最大1.7倍まで引き上げる
     const evBoost = Math.max(0.65, Math.min(1.85, Math.pow(Math.max(0.4, item.ev), 0.55)));
     return baseEqualWeight * evBoost;
   });
@@ -544,7 +534,6 @@ function computePatternAllocations(
     Math.max(100, Math.round(((safeBudget * (w / weightSum)) / 100)) * 100)
   );
 
-  // 合計金額が予算に近づくよう微調整
   let currentTotal = stakes.reduce((a, b) => a + b, 0);
   let guard = 0;
   while (currentTotal > safeBudget && guard < 100) {
@@ -562,7 +551,6 @@ function computePatternAllocations(
     guard++;
   }
   while (currentTotal < safeBudget && guard < 100) {
-    // 最もEVが高い目に+100円
     let bestIdx = 0;
     let bestScore = -1;
     for (let i = 0; i < rawItems.length; i++) {
@@ -1047,11 +1035,23 @@ function generateSanrentanFormCombos(first: number[], second: number[], third: n
   return combos;
 }
 
+/**
+ * ★Xポスト用テキスト生成関数（ご指定フォーマット）:
+ * レース会場 〇〇R
+ * 【東京 京王杯2歳S】AI予想🎯
+ * ◎ 馬名A
+ * 〇 馬名B
+ * ▲ 馬名C
+ * ☆ 馬名D
+ * △ 馬名E
+ * △ 馬名F
+ */
 function buildHorseMarksAndPostText(
   diagnosis: DiagnosisResult[] | null,
   tickets: BettingTickets | null,
   raceName: string,
-  placeName: string
+  placeName: string,
+  raceId: string
 ): HorseMarksSummary | null {
   if (!diagnosis || diagnosis.length === 0 || !tickets) return null;
 
@@ -1108,36 +1108,32 @@ function buildHorseMarksAndPostText(
     }
   }
 
+  // レースID末尾2桁からレース番号（例: 11R）を抽出
+  let raceNumLabel = '11R';
+  if (raceId && raceId.length >= 2) {
+    const rNum = parseInt(raceId.slice(-2), 10);
+    if (!isNaN(rNum) && rNum >= 1 && rNum <= 12) {
+      raceNumLabel = `${rNum}R`;
+    }
+  }
+
+  const venueStr = placeName || '東京';
   const cleanTitle = (raceName || '本日のレース')
     .replace(/出馬表.*$/, '')
     .replace(/\(.*?\)/g, '')
     .trim();
   const headerTitle = placeName ? `${placeName} ${cleanTitle}` : cleanTitle;
-  const hashtagRace = cleanTitle.replace(/\s+/g, '');
 
   const lines: string[] = [];
+  lines.push(`${venueStr} ${raceNumLabel}`);
   lines.push(`【${headerTitle}】AI予想🎯`);
-  if (honmei) lines.push(`◎ ${honmei.umaban}`);
-  if (taikou) lines.push(`〇 ${taikou.umaban}`);
-  if (tanana) lines.push(`▲ ${tanana.umaban}`);
-  if (tokuchu) lines.push(`☆ ${tokuchu.umaban}`);
-  if (renshita.length > 0) {
-    lines.push(`△ ${renshita.map((r) => r.umaban).join(', ')}`);
+  if (honmei) lines.push(`◎ ${honmei.bamei}`);
+  if (taikou) lines.push(`〇 ${taikou.bamei}`);
+  if (tanana) lines.push(`▲ ${tanana.bamei}`);
+  if (tokuchu) lines.push(`☆ ${tokuchu.bamei}`);
+  for (const r of renshita) {
+    lines.push(`△ ${r.bamei}`);
   }
-
-  lines.push('');
-  lines.push('🎫推奨買い目');
-  lines.push(`複勝: ${tickets.fukusho.picks.map((p) => p.umaban).join(', ')}`);
-  lines.push(
-    `ワイド: ${tickets.wide.axis} - ${tickets.wide.targets.join(', ')} (${tickets.wide.count}点)`
-  );
-  lines.push(
-    `3連複F: ${tickets.sanrenpuku_formation.row1.join(',')} - ${tickets.sanrenpuku_formation.row2.join(',')} - ${tickets.sanrenpuku_formation.row3.join(',')} (${tickets.sanrenpuku_formation.count}点)`
-  );
-  lines.push(
-    `3連単F: ${tickets.sanrentan_formation.first.join(',')} → ${tickets.sanrentan_formation.second.join(',')} → ${tickets.sanrentan_formation.third.join(',')} (${tickets.sanrentan_formation.count}点)`
-  );
-  lines.push(`#競馬予想 ${hashtagRace ? `#${hashtagRace}` : '#AI競馬'}`);
 
   return {
     markMap,
@@ -1489,7 +1485,6 @@ export default function Home() {
   const [customDirOverride, setCustomDirOverride] = useState<'AUTO' | 'LEFT' | 'RIGHT'>('AUTO');
   const [customStartMode, setCustomStartMode] = useState<StartModeType>('AUTO');
 
-  // ★Harville資金配分シミュレーター用の総予算＆配分モード
   const [budgetYen, setBudgetYen] = useState<number>(3000);
   const [allocMode, setAllocMode] = useState<'EV_FOCUS' | 'EQUAL_RETURN'>('EV_FOCUS');
 
@@ -1554,7 +1549,8 @@ export default function Home() {
     diagnosisResults,
     bettingTickets,
     targetRaceName,
-    targetPlace
+    targetPlace,
+    raceId
   );
 
   useEffect(() => {
@@ -2137,7 +2133,6 @@ export default function Home() {
         <p className="text-[11px] text-gray-400 mb-2 leading-snug">{pat.subNote}</p>
       </div>
 
-      {/* 各買い目の100円単位推奨配分＆推定オッズ一覧 */}
       <div className="bg-black/60 p-2 rounded border border-gray-800 max-h-36 overflow-y-auto">
         <div className="flex justify-between items-center text-[10px] text-gray-400 border-b border-gray-800 pb-1 mb-1 font-bold">
           <span>買い目 (推定オッズ / 妙味)</span>
@@ -2596,7 +2591,6 @@ export default function Home() {
                         <span className="text-[10px] text-gray-500">)</span>
                       </div>
 
-                      {/* ★新機能: 追切時計（4F・1F）入力による自動S/A/B/C判定ボックス */}
                       <div
                         className="flex items-center gap-1 bg-gray-950 rounded px-1.5 py-1 border border-amber-700/60"
                         title="追切の4F時計(例:51.2)と1F時計(例:11.3)を入力すると自動でS/A/B/Cランクを判定します"
@@ -2836,7 +2830,7 @@ export default function Home() {
                         📌 AI決定印（◎本命 / 〇対抗 / ▲単穴 / ☆妙味特注 / △連下）＆ 𝕏ポスト出力
                       </span>
                       <span className="text-[11px] text-gray-400">
-                        ※ポスト文面は馬番のみのコンパクト仕様（下の枠内で直接編集も可能です）
+                        ※会場名・レース番号＋印と馬名のみのシンプル仕様（枠内で直接編集も可能です）
                       </span>
                     </div>
 
@@ -3086,7 +3080,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* ワイド(2列目×3列目)・3連複・3連単 各4パターン戦術ボード ＋ 予算別資金配分シミュレーター */}
                 {axisDefensePlan && (
                   <div className="space-y-6">
                     <div className="bg-gray-900 border border-indigo-500/50 rounded-xl p-3.5 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
@@ -3242,7 +3235,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* 各馬の2段階指数カード一覧（包まれリスク印・瞬発ギア印・過去5走テーブル付き） */}
+            {/* 各馬の2段階指数カード一覧 */}
             <div className="grid md:grid-cols-2 gap-4">
               {displayedDiagnosis.map((horse) => {
                 const matchLabel = getScenarioMatchLabel(horse);
@@ -3308,7 +3301,6 @@ export default function Home() {
                           )}
                         </div>
 
-                        {/* ★包まれリスク・1強保護・単騎ハナ・極限瞬発ギアの専用ハイライトバッジ */}
                         {horse.tactical_badges && horse.tactical_badges.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-0.5">
                             {horse.tactical_badges.map((bText, bIdx) => (
@@ -3378,9 +3370,9 @@ export default function Home() {
                               ⚠️ 地力上位・持ち時計注意 ({horse.time_limit_mult}倍)
                             </span>
                           ) : horse.time_limit_mult !== undefined &&
-                            horse.time_limit_mult <= 0.88 ? (
+                            horse.time_limit_mult <= 0.93 ? (
                             <span className="bg-red-900/80 text-red-200 border border-red-500 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                              ❌ 持ち時計不足 ({horse.time_limit_mult}倍)
+                              ⚠️ 持ち時計やや不足 ({horse.time_limit_mult}倍)
                             </span>
                           ) : null}
                           {matchLabel && (
