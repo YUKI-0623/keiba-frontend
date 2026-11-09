@@ -1036,15 +1036,15 @@ function generateSanrentanFormCombos(first: number[], second: number[], third: n
 }
 
 /**
- * ★Xポスト用テキスト生成関数（ご指定フォーマット）:
- * レース会場 〇〇R
+ * ★Xポスト用テキスト生成関数（会場＋レース番号・印＋馬番＋馬名）:
+ * 東京 11R
  * 【東京 京王杯2歳S】AI予想🎯
- * ◎ 馬名A
- * 〇 馬名B
- * ▲ 馬名C
- * ☆ 馬名D
- * △ 馬名E
- * △ 馬名F
+ * ◎ 7 馬名A
+ * 〇 12 馬名B
+ * ▲ 3 馬名C
+ * ☆ 15 馬名D
+ * △ 2 馬名E
+ * △ 9 馬名F
  */
 function buildHorseMarksAndPostText(
   diagnosis: DiagnosisResult[] | null,
@@ -1108,7 +1108,6 @@ function buildHorseMarksAndPostText(
     }
   }
 
-  // レースID末尾2桁からレース番号（例: 11R）を抽出
   let raceNumLabel = '11R';
   if (raceId && raceId.length >= 2) {
     const rNum = parseInt(raceId.slice(-2), 10);
@@ -1127,12 +1126,12 @@ function buildHorseMarksAndPostText(
   const lines: string[] = [];
   lines.push(`${venueStr} ${raceNumLabel}`);
   lines.push(`【${headerTitle}】AI予想🎯`);
-  if (honmei) lines.push(`◎ ${honmei.bamei}`);
-  if (taikou) lines.push(`〇 ${taikou.bamei}`);
-  if (tanana) lines.push(`▲ ${tanana.bamei}`);
-  if (tokuchu) lines.push(`☆ ${tokuchu.bamei}`);
+  if (honmei) lines.push(`◎ ${honmei.umaban} ${honmei.bamei}`);
+  if (taikou) lines.push(`〇 ${taikou.umaban} ${taikou.bamei}`);
+  if (tanana) lines.push(`▲ ${tanana.umaban} ${tanana.bamei}`);
+  if (tokuchu) lines.push(`☆ ${tokuchu.umaban} ${tokuchu.bamei}`);
   for (const r of renshita) {
-    lines.push(`△ ${r.bamei}`);
+    lines.push(`△ ${r.umaban} ${r.bamei}`);
   }
 
   return {
@@ -2830,7 +2829,7 @@ export default function Home() {
                         📌 AI決定印（◎本命 / 〇対抗 / ▲単穴 / ☆妙味特注 / △連下）＆ 𝕏ポスト出力
                       </span>
                       <span className="text-[11px] text-gray-400">
-                        ※会場名・レース番号＋印と馬名のみのシンプル仕様（枠内で直接編集も可能です）
+                        ※会場名・レース番号＋印・馬番・馬名のシンプル仕様（枠内で直接編集も可能です）
                       </span>
                     </div>
 
