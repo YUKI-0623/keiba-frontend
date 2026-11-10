@@ -3768,6 +3768,7 @@ export default function Home() {
 
 ```tsx
 // ====== ここから Part 2/2（Part 1/2 のすぐ下に貼り付けてください） ======
+// ====== ▼ ここから上書き（function buildHorseMarksAndPostText から） ▼ ======
 
 function buildHorseMarksAndPostText(
   diagnosis: DiagnosisResult[] | null,
@@ -3776,7 +3777,7 @@ function buildHorseMarksAndPostText(
   placeName: string,
   raceId: string
 ): HorseMarksSummary | null {
-  if (!Array.isArray(diagnosis) || diagnosis.length === 0 || !tickets || !tickets.formation_groups) {
+  if (!Array.isArray(diagnosis) || diagnosis.length === 0 || !tickets?.formation_groups) {
     return null;
   }
 
@@ -3785,7 +3786,7 @@ function buildHorseMarksAndPostText(
   const axisGroup = tickets.formation_groups.axis_1st?.[0];
   const honmei =
     diagnosis.find((d) => d.umaban === axisGroup?.umaban) ||
-    [...diagnosis].sort((a, b) => (b.shisu || 0) - (a.shisu || 0))[0] ||
+    [...diagnosis].sort((a, b) => b.shisu - a.shisu)[0] ||
     null;
 
   if (honmei) {
@@ -3794,12 +3795,12 @@ function buildHorseMarksAndPostText(
 
   const targetUmabans: number[] = [];
   for (const m of tickets.formation_groups.main_2nd || []) {
-    if (m && m.umaban !== honmei?.umaban && !targetUmabans.includes(m.umaban)) {
+    if (m.umaban !== honmei?.umaban && !targetUmabans.includes(m.umaban)) {
       targetUmabans.push(m.umaban);
     }
   }
   for (const s of tickets.formation_groups.saver_3rd || []) {
-    if (s && s.umaban !== honmei?.umaban && !targetUmabans.includes(s.umaban)) {
+    if (s.umaban !== honmei?.umaban && !targetUmabans.includes(s.umaban)) {
       targetUmabans.push(s.umaban);
     }
   }
@@ -3821,8 +3822,8 @@ function buildHorseMarksAndPostText(
   const remainingPool = targetPool.slice(2);
   let tokuchu: DiagnosisResult | null = null;
   if (remainingPool.length > 0) {
-    tokuchu = [...remainingPool].sort((a, b) => (b.myoumi || 0) - (a.myoumi || 0) || (b.shisu || 0) - (a.shisu || 0))[0];
-    if (tokuchu) markMap[tokuchu.umaban] = '☆';
+    tokuchu = [...remainingPool].sort((a, b) => b.myoumi - a.myoumi || b.shisu - a.shisu)[0];
+    markMap[tokuchu.umaban] = '☆';
   }
 
   const renshita: DiagnosisResult[] = [];
@@ -3834,16 +3835,15 @@ function buildHorseMarksAndPostText(
   }
 
   let raceNumLabel = '11R';
-  const safeRaceId = String(raceId || '');
-  if (safeRaceId.length >= 2) {
-    const rNum = parseInt(safeRaceId.slice(-2), 10);
+  if (raceId && raceId.length >= 2) {
+    const rNum = parseInt(raceId.slice(-2), 10);
     if (!isNaN(rNum) && rNum >= 1 && rNum <= 12) {
       raceNumLabel = `${rNum}R`;
     }
   }
 
   const venueStr = placeName || '東京';
-  const cleanTitle = String(raceName || '本日のレース')
+  const cleanTitle = (raceName || '本日のレース')
     .replace(/出馬表.*$/, '')
     .replace(/\(.*?\)/g, '')
     .trim();
@@ -3877,20 +3877,20 @@ function buildAxisDefensePlan(
   budgetYen: number,
   allocMode: 'EV_FOCUS' | 'EQUAL_RETURN'
 ): AxisDefensePlan | null {
-  if (!Array.isArray(diagnosis) || diagnosis.length < 3 || !tickets || !tickets.formation_groups) {
+  if (!Array.isArray(diagnosis) || diagnosis.length < 3 || !tickets?.formation_groups) {
     return null;
   }
 
-  const byStage2 = [...diagnosis].sort((a, b) => (b.shisu || 0) - (a.shisu || 0));
-  const byStage1 = [...diagnosis].sort((a, b) => (b.stage1_shisu || 0) - (a.stage1_shisu || 0));
+  const byStage2 = [...diagnosis].sort((a, b) => b.shisu - a.shisu);
+  const byStage1 = [...diagnosis].sort((a, b) => b.stage1_shisu - a.stage1_shisu);
   const byOdds = [...diagnosis].filter((d) => d.odds > 0).sort((a, b) => a.odds - b.odds);
 
   const axisGroup = tickets.formation_groups.axis_1st?.[0];
   const axisHorse = diagnosis.find((d) => d.umaban === axisGroup?.umaban) || byStage2[0];
-  const secondHorse = byStage2.find((d) => d.umaban !== axisHorse.umaban) || byStage2[1] || axisHorse;
+  const secondHorse = byStage2.find((d) => d.umaban !== axisHorse.umaban) || byStage2[1];
   const fav1Horse = byOdds.length > 0 ? byOdds[0] : axisHorse;
 
-  const shisuGap = Number(((axisHorse.shisu || 50) - (secondHorse.shisu || 50)).toFixed(1));
+  const shisuGap = Number((axisHorse.shisu - secondHorse.shisu).toFixed(1));
   const axisHasBoxRisk =
     axisHorse.box_in_risk_level === 'HIGH_BOX_RISK' ||
     axisHorse.box_in_risk_level === 'MOD_BOX_RISK';
@@ -3931,7 +3931,7 @@ function buildAxisDefensePlan(
 
   const row1Umabans = [axisHorse.umaban];
   const main2ndUmabans = (tickets.formation_groups.main_2nd || []).map((m) => m.umaban);
-  const saver3rdUmabans = (tickets.formation_groups.saver_3rd || []).map((s) => s.umaban);
+  const saver3rdUmabans = [...(tickets.formation_groups.saver_3rd || []).map((s) => s.umaban)];
 
   if (saver3rdUmabans.length < 2) {
     for (const d of byStage2) {
@@ -3969,13 +3969,12 @@ function buildAxisDefensePlan(
   const myoumiSortedRow23 = allRow2Row3
     .map((u) => diagnosis.find((d) => d.umaban === u))
     .filter((d): d is DiagnosisResult => Boolean(d))
-    .sort((a, b) => (b.myoumi || 0) - (a.myoumi || 0) || (b.shisu || 0) - (a.shisu || 0));
+    .sort((a, b) => b.myoumi - a.myoumi || b.shisu - a.shisu);
 
   const tokuchuAxis =
     myoumiSortedRow23.find((d) => saver3rdUmabans.includes(d.umaban))?.umaban ||
     myoumiSortedRow23[0]?.umaban ||
-    main2ndUmabans[0] ||
-    secondHorse.umaban;
+    main2ndUmabans[0];
 
   const makeItem = (
     id: string,
@@ -3986,9 +3985,8 @@ function buildAxisDefensePlan(
     subNote: string,
     combos: string[]
   ): PatternTicketItem => {
-    const safeCombos = Array.isArray(combos) ? combos : [];
     const allocInfo = computePatternAllocations(
-      safeCombos,
+      combos,
       ticketType,
       diagnosis,
       budgetYen,
@@ -4001,8 +3999,8 @@ function buildAxisDefensePlan(
       badge,
       structureText,
       subNote,
-      combos: safeCombos,
-      count: safeCombos.length,
+      combos,
+      count: combos.length,
       syntheticOdds: allocInfo.syntheticOdds,
       totalStakeYen: allocInfo.totalStakeYen,
       allocations: allocInfo.allocations,
@@ -4194,7 +4192,7 @@ export default function Home() {
   const [courseRailMessage, setCourseRailMessage] = useState('');
   const [courseRpci, setCourseRpci] = useState<number | null>(null);
   const [courseRpciType, setCourseRpciType] = useState<string>('');
-  const [referenceBenchmarks, setReferenceBenchmarks] = useState<ReferenceBenchmarks null |>(null);
+  const [referenceBenchmarks, setReferenceBenchmarks] = useState<ReferenceBenchmarks | null>(null);
 
   const [courseType, setCourseType] = useState('芝');
   const [distance, setDistance] = useState(2000);
@@ -4206,7 +4204,7 @@ export default function Home() {
   const [biasStrength, setBiasStrength] = useState('中');
 
   const [cushionValue, setCushionValue] = useState<number>(9.5);
-  const [autoStatus, setAutoStatus] = useState<AutoStatusInfo null |>(null);
+  const [autoStatus, setAutoStatus] = useState<AutoStatusInfo | null>(null);
 
   const [customDirOverride, setCustomDirOverride] = useState<'AUTO' | 'LEFT' | 'RIGHT'>('AUTO');
   const [customStartMode, setCustomStartMode] = useState<StartModeType>('AUTO');
@@ -4242,9 +4240,9 @@ export default function Home() {
     },
   ]);
 
-  const [diagnosisResults, setDiagnosisResults] = useState<DiagnosisResult[] null |>(null);
-  const [bettingTickets, setBettingTickets] = useState<BettingTickets null |>(null);
-  const [currentWin5Profile, setCurrentWin5Profile] = useState<Win5Profile null |>(null);
+  const [diagnosisResults, setDiagnosisResults] = useState<DiagnosisResult[] | null>(null);
+  const [bettingTickets, setBettingTickets] = useState<BettingTickets | null>(null);
+  const [currentWin5Profile, setCurrentWin5Profile] = useState<Win5Profile | null>(null);
   const [activeStageView, setActiveStageView] = useState<'STAGE1' | 'STAGE2'>('STAGE2');
   const [activePatternTab, setActivePatternTab] = useState<'WIDE' | 'PUKU' | 'TAN' | 'ALL'>('ALL');
   const [isDiagnosing, setIsDiagnosing] = useState(false);
@@ -4275,7 +4273,7 @@ export default function Home() {
   const [win5PostText, setWin5PostText] = useState<string>('');
   const [win5CopiedFlag, setWin5CopiedFlag] = useState<boolean>(false);
 
-  const [results, setResults] = useState<RaceResult[] null |>(null);
+  const [results, setResults] = useState<RaceResult[] | null>(null);
   const [raceInfo, setRaceInfo] = useState<{
     req_up: number;
     pace_f: number;
@@ -4300,16 +4298,12 @@ export default function Home() {
       const savedHistStr = localStorage.getItem('keiba_pro_saved_races_v1');
       if (savedHistStr) {
         const parsed = JSON.parse(savedHistStr);
-        if (Array.isArray(parsed)) {
-          setSavedRacesHistory(parsed.filter((x) => x && typeof x.raceId === 'string'));
-        }
+        if (Array.isArray(parsed)) setSavedRacesHistory(parsed);
       }
       const savedWin5Str = localStorage.getItem('keiba_pro_win5_slots_v1');
       if (savedWin5Str) {
         const parsedW5 = JSON.parse(savedWin5Str);
-        if (Array.isArray(parsedW5) && parsedW5.length === 5) {
-          setWin5Slots(parsedW5);
-        }
+        if (Array.isArray(parsedW5) && parsedW5.length === 5) setWin5Slots(parsedW5);
       }
     } catch (e) {
       console.error(e);
@@ -4341,9 +4335,8 @@ export default function Home() {
   }, [win5Slots]);
 
   const saveRaceToHistory = (item: SavedRaceHistoryItem) => {
-    if (!item || !item.raceId) return;
     setSavedRacesHistory((prev) => {
-      const filtered = prev.filter((x) => x && x.raceId !== item.raceId);
+      const filtered = prev.filter((x) => x.raceId !== item.raceId);
       const next = [item, ...filtered].slice(0, 10);
       try {
         localStorage.setItem('keiba_pro_saved_races_v1', JSON.stringify(next));
@@ -4354,11 +4347,11 @@ export default function Home() {
     });
   };
 
-  // ★追加: 履歴の1件削除 ＆ 全履歴一括削除
-  const handleDeleteHistoryItem = (targetId: string, e: React.MouseEvent) => {
+  // ★履歴の個別削除関数
+  const handleDeleteHistoryItem = (targetRaceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setSavedRacesHistory((prev) => {
-      const next = prev.filter((x) => x && x.raceId !== targetId);
+      const next = prev.filter((x) => x.raceId !== targetRaceId);
       try {
         localStorage.setItem('keiba_pro_saved_races_v1', JSON.stringify(next));
       } catch (err) {
@@ -4368,6 +4361,7 @@ export default function Home() {
     });
   };
 
+  // ★履歴の一括全削除関数
   const handleClearAllHistory = () => {
     setSavedRacesHistory([]);
     try {
@@ -4377,17 +4371,14 @@ export default function Home() {
     }
   };
 
-  // ★追加: WIN5スロットの個別クリア ＆ 全クリア
-  const handleClearWin5Slot = (slotIdx: number) => {
-    setWin5Slots((prev) => {
-      const next = [...prev];
-      next[slotIdx] = null;
-      return next;
-    });
+  // ★WIN5スロットの個別クリア＆一括クリア関数
+  const handleClearSingleWin5Slot = (slotIdx: number) => {
+    setWin5Slots((prev) => prev.map((s, idx) => (idx === slotIdx ? null : s)));
   };
 
   const handleClearAllWin5Slots = () => {
-    setWin5Slots([null, null, null, null, null]);
+    const empty: (Win5SlotData | null)[] = [null, null, null, null, null];
+    setWin5Slots(empty);
     setWin5BatchProgressText('');
     try {
       localStorage.removeItem('keiba_pro_win5_slots_v1');
@@ -4397,28 +4388,27 @@ export default function Home() {
   };
 
   const handleLoadFromHistory = (item: SavedRaceHistoryItem) => {
-    if (!item) return;
-    setRaceId(String(item.raceId || ''));
-    setTargetRaceName(String(item.targetRaceName || ''));
-    setTargetPlace(String(item.targetPlace || '東京'));
-    setCourseRailMessage(String(item.courseRailMessage || ''));
-    setCourseRpci(item.courseRpci ?? 50.0);
-    setCourseRpciType(String(item.courseRpciType || 'B'));
-    setReferenceBenchmarks(item.referenceBenchmarks || null);
-    setCourseType(String(item.courseType || '芝'));
-    setDistance(Number(item.distance || 2000));
-    setWeather(String(item.weather || '晴'));
-    setTrackCondition(String(item.trackCondition || '良'));
-    setExpectedPace(String(item.expectedPace || 'M_JIRIKI'));
-    setTrackBias(String(item.trackBias || 'フラット'));
-    setBiasStrength(String(item.biasStrength || '中'));
-    setCushionValue(Number(item.cushionValue || 9.5));
-    setAutoStatus(item.autoStatus || null);
-    setHorses(Array.isArray(item.horses) ? item.horses : []);
-    setDiagnosisResults(Array.isArray(item.diagnosisResults) ? item.diagnosisResults : null);
-    setBettingTickets(item.bettingTickets || null);
-    setCurrentWin5Profile(item.win5Profile || null);
-    setRaceInfo(item.raceInfo || null);
+    setRaceId(item.raceId);
+    setTargetRaceName(item.targetRaceName);
+    setTargetPlace(item.targetPlace);
+    setCourseRailMessage(item.courseRailMessage);
+    setCourseRpci(item.courseRpci);
+    setCourseRpciType(item.courseRpciType);
+    setReferenceBenchmarks(item.referenceBenchmarks);
+    setCourseType(item.courseType);
+    setDistance(item.distance);
+    setWeather(item.weather);
+    setTrackCondition(item.trackCondition);
+    setExpectedPace(item.expectedPace);
+    setTrackBias(item.trackBias);
+    setBiasStrength(item.biasStrength);
+    setCushionValue(item.cushionValue);
+    setAutoStatus(item.autoStatus);
+    setHorses(item.horses || []);
+    setDiagnosisResults(item.diagnosisResults);
+    setBettingTickets(item.bettingTickets);
+    setCurrentWin5Profile(item.win5Profile);
+    setRaceInfo(item.raceInfo);
     setResults(null);
     setIsRacing(false);
     setShowResults(false);
@@ -4433,8 +4423,8 @@ export default function Home() {
     const optCounts = computeOptimalWin5Counts(baseSlots, targetPts);
     const updated = baseSlots.map((slot, idx) => {
       if (!slot || !slot.win5Profile) return null;
+      const cnt = optCounts[idx] || 1;
       const cands = Array.isArray(slot.win5Profile.candidates) ? slot.win5Profile.candidates : [];
-      const cnt = Math.max(1, optCounts[idx] || 1);
       const topUmabans = cands.slice(0, cnt).map((c) => c.umaban);
       return {
         ...slot,
@@ -4445,37 +4435,39 @@ export default function Home() {
   };
 
   const handleRegisterCurrentToWin5 = (slotIdx: number) => {
-    if (!Array.isArray(diagnosisResults) || diagnosisResults.length === 0 || !bettingTickets) {
+    if (!diagnosisResults || !bettingTickets) {
       alert('先にSTEP 2の下部ボタンから「最終診断」を実行してください。');
       return;
     }
     const prof = ensureValidWin5Profile(currentWin5Profile, diagnosisResults, bettingTickets);
-    const safeId = String(raceId || '');
+    const cands = Array.isArray(prof.candidates) ? prof.candidates : [];
+    if (cands.length === 0) {
+      alert('有効な候補馬データがありません。');
+      return;
+    }
+
     let rNumLabel = '11R';
-    if (safeId.length >= 2) {
-      const rn = parseInt(safeId.slice(-2), 10);
+    if (raceId && raceId.length >= 2) {
+      const rn = parseInt(raceId.slice(-2), 10);
       if (!isNaN(rn)) rNumLabel = `${rn}R`;
     }
 
-    const cands = Array.isArray(prof.candidates) ? prof.candidates : [];
     const newSlot: Win5SlotData = {
       slotIndex: slotIdx,
-      raceId: safeId,
+      raceId,
       placeName: targetPlace || '東京',
       raceNumLabel: rNumLabel,
       raceName: targetRaceName || `レース${slotIdx + 1}`,
       courseType,
       distance,
       win5Profile: prof,
-      selectedUmabans: cands
-        .slice(0, Math.max(1, prof.recommended_count || 2))
-        .map((c) => c.umaban),
+      selectedUmabans: cands.slice(0, prof.recommended_count || 2).map((c) => c.umaban),
     };
 
     const nextSlots = [...win5Slots];
     nextSlots[slotIdx] = newSlot;
     const nextIds = [...win5InputIds];
-    nextIds[slotIdx] = safeId;
+    nextIds[slotIdx] = raceId;
     setWin5InputIds(nextIds);
 
     handleApplyWin5TargetPoints(win5TargetPoints, nextSlots);
@@ -4486,25 +4478,22 @@ export default function Home() {
     setWin5Slots((prev) =>
       prev.map((slot, i) => {
         if (i !== slotIdx || !slot) return slot;
-        const curSel = Array.isArray(slot.selectedUmabans) ? slot.selectedUmabans : [];
-        const exists = curSel.includes(umaban);
+        const currentSel = Array.isArray(slot.selectedUmabans) ? slot.selectedUmabans : [];
+        const exists = currentSel.includes(umaban);
         let nextSel: number[];
         if (exists) {
-          if (curSel.length <= 1) return slot;
-          nextSel = curSel.filter((u) => u !== umaban);
+          if (currentSel.length <= 1) return slot;
+          nextSel = currentSel.filter((u) => u !== umaban);
         } else {
-          nextSel = [...curSel, umaban];
+          nextSel = [...currentSel, umaban];
         }
         return { ...slot, selectedUmabans: nextSel };
       })
     );
   };
 
-  /**
-   * ★修正済み: 5レース中に出馬表未発表（0頭）のレースが混ざっていてもエラーで止まらずスキップする安全設計
-   */
   const handleBatchFetchWin5 = async () => {
-    const validIds = win5InputIds.map((x) => String(x || '').trim());
+    const validIds = win5InputIds.map((x) => x.trim());
     if (validIds.some((x) => x.length < 10)) {
       alert('WIN5対象の5つのレースID（12桁）をすべて入力してください。');
       return;
@@ -4519,15 +4508,15 @@ export default function Home() {
         const rid = validIds[i];
         setWin5BatchProgressText(`⏳ WIN5自動解析中 (${i + 1}/5レース目: ID ${rid})...`);
 
-        const resFetch = await fetch(`[https://keiba-api-hybt.onrender.com/fetch_race/$](https://keiba-api-hybt.onrender.com/fetch_race/$){rid}`);
+        const resFetch = await fetch(`https://keiba-api-hybt.onrender.com/fetch_race/${rid}`);
         if (!resFetch.ok) {
-          skippedNotes.push(`第${i + 1}戦(${rid}: 通信失敗)`);
+          skippedNotes.push(`第${i + 1}戦(${rid}): 通信エラー`);
           continue;
         }
         const fetchJson = await resFetch.json();
         const fetchedHorses = Array.isArray(fetchJson?.horses) ? fetchJson.horses : [];
         if (fetchJson.status !== 'success' || fetchedHorses.length < 2) {
-          skippedNotes.push(`第${i + 1}戦(${rid}: 出馬表未登録)`);
+          skippedNotes.push(`第${i + 1}戦(${rid}): 出馬表未発表または0頭のためスキップ`);
           continue;
         }
 
@@ -4540,7 +4529,7 @@ export default function Home() {
         const bStr = fetchJson.auto_bias_strength || '中';
         const cVal = cType === '芝' && ['稍', '重', '不'].includes(tCond) ? 8.6 : 9.5;
 
-        const resDiag = await fetch('[https://keiba-api-hybt.onrender.com/diagnose_race](https://keiba-api-hybt.onrender.com/diagnose_race)', {
+        const resDiag = await fetch('https://keiba-api-hybt.onrender.com/diagnose_race', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -4557,13 +4546,15 @@ export default function Home() {
           }),
         });
         if (!resDiag.ok) {
-          skippedNotes.push(`第${i + 1}戦(${rid}: 診断失敗)`);
+          skippedNotes.push(`第${i + 1}戦(${rid}): 診断エラー`);
           continue;
         }
         const diagJson = await resDiag.json();
-        const diagList = Array.isArray(diagJson?.diagnosis) ? diagJson.diagnosis : [];
+        const diagList: DiagnosisResult[] = Array.isArray(diagJson?.diagnosis)
+          ? diagJson.diagnosis
+          : [];
         if (diagList.length === 0) {
-          skippedNotes.push(`第${i + 1}戦(${rid}: 診断結果空)`);
+          skippedNotes.push(`第${i + 1}戦(${rid}): 診断結果が空のためスキップ`);
           continue;
         }
 
@@ -4572,6 +4563,7 @@ export default function Home() {
           diagList,
           diagJson.betting_tickets
         );
+        const cands = Array.isArray(prof.candidates) ? prof.candidates : [];
 
         let rNumLabel = '11R';
         if (rid.length >= 2) {
@@ -4580,7 +4572,6 @@ export default function Home() {
         }
 
         const pName = normalizeToSupportedVenue(fetchJson.place_name || '東京');
-        const cands = Array.isArray(prof.candidates) ? prof.candidates : [];
         nextSlots[i] = {
           slotIndex: i,
           raceId: rid,
@@ -4590,9 +4581,7 @@ export default function Home() {
           courseType: cType,
           distance: dist,
           win5Profile: prof,
-          selectedUmabans: cands
-            .slice(0, Math.max(1, prof.recommended_count || 2))
-            .map((c) => c.umaban),
+          selectedUmabans: cands.slice(0, prof.recommended_count || 2).map((c) => c.umaban),
         };
 
         saveRaceToHistory({
@@ -4630,7 +4619,7 @@ export default function Home() {
       handleApplyWin5TargetPoints(win5TargetPoints, nextSlots);
       if (skippedNotes.length > 0) {
         setWin5BatchProgressText(
-          `⚠️ 解析完了（一部スキップ: ${skippedNotes.join(' / ')} ※レースIDが存在するか確認してください）`
+          `⚠️ 一部スキップ完了: ${skippedNotes.join(' / ')}（取得できたレースは反映済みです）`
         );
       } else {
         setWin5BatchProgressText('✅ WIN5 全5レースのAI解析＆最適点数配分が完了しました！');
@@ -4651,7 +4640,7 @@ export default function Home() {
   const startConfig = resolveStartConfig(activeVenueKey, courseType, distance, customStartMode);
 
   useEffect(() => {
-    if (!isRacing || !Array.isArray(results) || results.length === 0) {
+    if (!isRacing || !results || results.length === 0) {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
       return;
@@ -4668,7 +4657,7 @@ export default function Home() {
       const waku = hInput ? Number(hInput.wakuban || r.umaban) : r.umaban;
 
       let hasMakuriHistory = false;
-      const hist = Array.isArray(hInput?.history_details) ? hInput!.history_details! : [];
+      const hist = hInput?.history_details || [];
       for (const hd of hist) {
         const pNums = String(hd.passing || '')
           .split('-')
@@ -4881,7 +4870,7 @@ export default function Home() {
   };
 
   const handleShareToX = () => {
-    const url = `[https://twitter.com/intent/tweet?text=$](https://twitter.com/intent/tweet?text=$){encodeURIComponent(xPostText)}`;
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(xPostText)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -4896,7 +4885,7 @@ export default function Home() {
   };
 
   const handleShareWin5ToX = () => {
-    const url = `[https://twitter.com/intent/tweet?text=$](https://twitter.com/intent/tweet?text=$){encodeURIComponent(win5PostText)}`;
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(win5PostText)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -4907,7 +4896,7 @@ export default function Home() {
     }
     setFetching(true);
     try {
-      const response = await fetch(`[https://keiba-api-hybt.onrender.com/fetch_race/$](https://keiba-api-hybt.onrender.com/fetch_race/$){raceId}`);
+      const response = await fetch(`https://keiba-api-hybt.onrender.com/fetch_race/${raceId}`);
       if (!response.ok) throw new Error('通信エラー');
       const data = await response.json();
       if (data.status === 'success') {
@@ -5026,7 +5015,7 @@ export default function Home() {
     setShowResults(false);
 
     try {
-      const response = await fetch('[https://keiba-api-hybt.onrender.com/diagnose_race](https://keiba-api-hybt.onrender.com/diagnose_race)', {
+      const response = await fetch('https://keiba-api-hybt.onrender.com/diagnose_race', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -5045,7 +5034,7 @@ export default function Home() {
 
       if (!response.ok) throw new Error('API通信エラー');
       const data = await response.json();
-      const diagList = Array.isArray(data.diagnosis) ? data.diagnosis : [];
+      const diagList: DiagnosisResult[] = Array.isArray(data.diagnosis) ? data.diagnosis : [];
       setDiagnosisResults(diagList);
       setBettingTickets(data.betting_tickets || null);
       const w5Prof: Win5Profile = ensureValidWin5Profile(
@@ -5111,7 +5100,7 @@ export default function Home() {
     setLoading(true);
 
     try {
-      const response = await fetch('[https://keiba-api-hybt.onrender.com/simulate_race](https://keiba-api-hybt.onrender.com/simulate_race)', {
+      const response = await fetch('https://keiba-api-hybt.onrender.com/simulate_race', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -5338,11 +5327,9 @@ export default function Home() {
 
   const currentScenario = PACE_SCENARIOS[expectedPace] || PACE_SCENARIOS.M_JIRIKI;
 
-  const displayedDiagnosis = Array.isArray(diagnosisResults)
+  const displayedDiagnosis = diagnosisResults
     ? [...diagnosisResults].sort((a, b) =>
-        activeStageView === 'STAGE1'
-          ? (b.stage1_shisu || 0) - (a.stage1_shisu || 0)
-          : (b.shisu || 0) - (a.shisu || 0)
+        activeStageView === 'STAGE1' ? b.stage1_shisu - a.stage1_shisu : b.shisu - a.shisu
       )
     : null;
 
@@ -5354,8 +5341,8 @@ export default function Home() {
   );
 
   const totalWin5Combos = win5Slots.reduce((acc, s) => {
-    const len = Array.isArray(s?.selectedUmabans) ? s!.selectedUmabans.length : 0;
-    return acc * (len > 0 ? len : 1);
+    const selLen = Array.isArray(s?.selectedUmabans) ? s!.selectedUmabans.length : 0;
+    return acc * (selLen > 0 ? selLen : 1);
   }, 1);
 
   return (
@@ -5380,7 +5367,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* 📌 診断済みレース履歴バー（ワンタップ切替 ＆ 個別削除✕ ＆ 全履歴クリア） */}
+        {/* 📌 診断済みレース履歴バー（個別削除「✕」＆「🗑️ 全履歴クリア」付き） */}
         {savedRacesHistory.length > 0 && (
           <div className="mb-5 bg-gray-800/90 border border-gray-700 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -5388,15 +5375,13 @@ export default function Home() {
                 📌 診断済み履歴 (ワンタップ切替):
               </span>
               {savedRacesHistory.map((item) => {
-                if (!item || !item.raceId) return null;
-                const safeId = String(item.raceId || '');
-                const rNum = safeId.length >= 2 ? safeId.slice(-2) : '11';
-                const isCurrent = safeId === raceId && Boolean(diagnosisResults);
+                const rNum = item.raceId.slice(-2);
+                const isCurrent = item.raceId === raceId && Boolean(diagnosisResults);
                 return (
                   <div
-                    key={safeId}
+                    key={item.raceId}
                     onClick={() => handleLoadFromHistory(item)}
-                    className={`cursor-pointer px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 ${
+                    className={`cursor-pointer pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 ${
                       isCurrent
                         ? 'bg-indigo-600 text-white border-indigo-400 shadow'
                         : 'bg-gray-900 text-gray-300 border-gray-600 hover:bg-gray-700'
@@ -5410,9 +5395,10 @@ export default function Home() {
                       {String(item.targetRaceName || '').replace(/出馬表.*$/, '').trim()}
                     </span>
                     <button
-                      onClick={(e) => handleDeleteHistoryItem(safeId, e)}
+                      type="button"
+                      onClick={(e) => handleDeleteHistoryItem(item.raceId, e)}
                       title="この履歴を削除"
-                      className="ml-1 text-gray-400 hover:text-red-400 font-black px-1 rounded hover:bg-black/40 transition"
+                      className="ml-1 w-4 h-4 rounded-full bg-black/40 hover:bg-red-600 text-gray-300 hover:text-white flex items-center justify-center text-[10px] leading-none transition"
                     >
                       ✕
                     </button>
@@ -5421,10 +5407,11 @@ export default function Home() {
               })}
             </div>
             <button
+              type="button"
               onClick={handleClearAllHistory}
-              className="text-[11px] bg-red-950/80 hover:bg-red-800 text-red-200 border border-red-700/70 px-2.5 py-1 rounded-lg font-bold transition whitespace-nowrap"
+              className="text-[11px] font-bold bg-red-950/80 hover:bg-red-700 text-red-200 hover:text-white px-2.5 py-1 rounded-lg border border-red-700/70 transition whitespace-nowrap"
             >
-              🗑️ 履歴をすべて消去
+              🗑️ 全履歴クリア
             </button>
           </div>
         )}
@@ -5444,13 +5431,15 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 {win5Slots.some(Boolean) && (
                   <button
+                    type="button"
                     onClick={handleClearAllWin5Slots}
-                    className="text-xs bg-red-950/80 hover:bg-red-800 text-red-200 px-3 py-1.5 rounded-lg border border-red-700 font-bold transition"
+                    className="text-xs bg-red-950/80 hover:bg-red-700 text-red-200 hover:text-white px-3 py-1.5 rounded-lg border border-red-700/70 font-bold transition"
                   >
                     🗑️ WIN5全クリア
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => setShowWin5Panel(false)}
                   className="text-xs text-gray-400 hover:text-white bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-600"
                 >
@@ -5471,7 +5460,7 @@ export default function Home() {
                     </label>
                     <input
                       type="text"
-                      value={win5InputIds[idx] || ''}
+                      value={win5InputIds[idx]}
                       onChange={(e) => {
                         const next = [...win5InputIds];
                         next[idx] = e.target.value;
@@ -5527,10 +5516,9 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
               {[0, 1, 2, 3, 4].map((idx) => {
                 const slot = win5Slots[idx];
-                const cands = Array.isArray(slot?.win5Profile?.candidates)
+                const slotCands = Array.isArray(slot?.win5Profile?.candidates)
                   ? slot!.win5Profile.candidates
                   : [];
-                const selList = Array.isArray(slot?.selectedUmabans) ? slot!.selectedUmabans : [];
                 return (
                   <div
                     key={idx}
@@ -5544,12 +5532,13 @@ export default function Home() {
                         {slot && (
                           <div className="flex items-center gap-1">
                             <span className="text-[10px] bg-gray-800 text-white px-2 py-0.5 rounded font-bold">
-                              選択 {selList.length}頭
+                              選択 {(slot.selectedUmabans || []).length}頭
                             </span>
                             <button
-                              onClick={() => handleClearWin5Slot(idx)}
+                              type="button"
+                              onClick={() => handleClearSingleWin5Slot(idx)}
                               title="このスロットをクリア"
-                              className="text-[10px] text-gray-400 hover:text-red-400 px-1 font-bold"
+                              className="w-4 h-4 rounded-full bg-gray-800 hover:bg-red-600 text-gray-400 hover:text-white flex items-center justify-center text-[10px]"
                             >
                               ✕
                             </button>
@@ -5590,8 +5579,8 @@ export default function Home() {
                           </div>
 
                           <div className="space-y-1.5 mt-2">
-                            {cands.map((cand) => {
-                              const isSel = selList.includes(cand.umaban);
+                            {slotCands.map((cand) => {
+                              const isSel = (slot.selectedUmabans || []).includes(cand.umaban);
                               return (
                                 <button
                                   key={cand.umaban}
@@ -5944,7 +5933,7 @@ export default function Home() {
                   {currentScenario.headline}
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 text-xs">
+// ====== ▲ ここまで上書き（このすぐ下に先ほどの <div className="grid grid-cols-1 md:grid-cols-3 ... が続きます） ▲ ======
                 <div className="bg-gray-900/90 p-2.5 md:p-3 rounded-lg border border-gray-800/80">
                   <div className="text-[10px] text-gray-400 font-bold mb-1">発生しやすい展開</div>
                   <div className="text-gray-100 font-bold leading-snug">{currentScenario.flow}</div>
