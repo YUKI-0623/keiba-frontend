@@ -475,9 +475,6 @@ function evaluateTrainingRankFromClock(t4fStr?: string, t1fStr?: string): string
   return null;
 }
 
-/**
- * ★修正済み: 診断配列やticketsが空・未定義でも絶対に `.slice` エラーにならない安全設計
- */
 function buildFallbackWin5Profile(
   diagnosis?: DiagnosisResult[] | null,
   tickets?: BettingTickets | null
@@ -704,7 +701,12 @@ function computePatternAllocations(
   totalStakeYen: number;
   allocations: AllocatedComboItem[];
 } {
-  if (!Array.isArray(combos) || combos.length === 0 || !Array.isArray(diagnosis) || diagnosis.length === 0) {
+  if (
+    !Array.isArray(combos) ||
+    combos.length === 0 ||
+    !Array.isArray(diagnosis) ||
+    diagnosis.length === 0
+  ) {
     return { syntheticOdds: 0, totalStakeYen: 0, allocations: [] };
   }
 
@@ -1193,7 +1195,13 @@ function getTacticalBadgeStyle(badgeText: string): string {
   if (s.includes('🚨') || s.includes('イン包まれ警戒')) {
     return 'bg-red-950/90 text-red-200 border-red-500 font-extrabold shadow-[0_0_6px_rgba(239,68,68,0.5)]';
   }
-  if (s.includes('⚠️') || s.includes('注意')) {
+  if (
+    s.includes('⚠️') ||
+    s.includes('注意') ||
+    s.includes('劣勢') ||
+    s.includes('忙し') ||
+    s.includes('過信禁物')
+  ) {
     return 'bg-amber-950/90 text-amber-200 border-amber-500 font-extrabold';
   }
   if (s.includes('☔') || s.includes('🌧️') || s.includes('道悪')) {
@@ -1202,7 +1210,27 @@ function getTacticalBadgeStyle(badgeText: string): string {
   if (s.includes('🌊') || s.includes('脚抜き') || s.includes('湿ダート')) {
     return 'bg-cyan-950/90 text-cyan-200 border-cyan-400 font-extrabold shadow-[0_0_6px_rgba(6,182,212,0.4)]';
   }
-  if (s.includes('🛡️') || s.includes('1強地力')) {
+  if (
+    s.includes('🎯') ||
+    s.includes('ベスト距離') ||
+    s.includes('🏟️') ||
+    s.includes('リピーター') ||
+    s.includes('⛰️') ||
+    s.includes('💪')
+  ) {
+    return 'bg-emerald-950/90 text-emerald-200 border-emerald-400 font-extrabold';
+  }
+  if (
+    s.includes('🔄') ||
+    s.includes('巻き返し') ||
+    s.includes('脚余し') ||
+    s.includes('見直し') ||
+    s.includes('サウスポー') ||
+    s.includes('右回り巧者')
+  ) {
+    return 'bg-purple-950/90 text-purple-200 border-purple-400 font-extrabold';
+  }
+  if (s.includes('🛡️') || s.includes('1強地力') || s.includes('重賞僅差')) {
     return 'bg-emerald-950/90 text-yellow-300 border-emerald-400 font-extrabold';
   }
   if (s.includes('⚡') || s.includes('瞬発ギア') || s.includes('鋭伸ギア')) {
@@ -1214,7 +1242,12 @@ function getTacticalBadgeStyle(badgeText: string): string {
   if (s.includes('🟢') || s.includes('スムーズ加速')) {
     return 'bg-teal-950/90 text-teal-200 border-teal-400 font-bold';
   }
-  if (s.includes('🔥') || s.includes('前残り') || s.includes('ロンスパ')) {
+  if (
+    s.includes('🔥') ||
+    s.includes('前残り') ||
+    s.includes('ロンスパ') ||
+    s.includes('早仕掛け')
+  ) {
     return 'bg-orange-950/90 text-orange-200 border-orange-500 font-extrabold';
   }
   return 'bg-indigo-950/80 text-indigo-200 border-indigo-500 font-bold';
@@ -1323,2452 +1356,6 @@ function generateSanrentanFormCombos(first: number[], second: number[], third: n
   }
   return combos;
 }
-
-// ====== ここまで Part 1/2（このすぐ下に Part 2/2 を貼り付けてください） ======
-// ====== ここから Part 2/2（Part 1/2 のすぐ下に貼り付けてください） ======
-
-function buildHorseMarksAndPostText(
-  diagnosis: DiagnosisResult[] | null,
-  tickets: BettingTickets | null,
-  raceName: string,
-  placeName: string,
-  raceId: string
-): HorseMarksSummary | null {
-  if (
-    !Array.isArray(diagnosis) ||
-    diagnosis.length === 0 ||
-    !tickets ||
-    !tickets.formation_groups
-  ) {
-    return null;
-  }
-
-  const markMap: Record<number, '◎' | '〇' | '▲' | '☆' | '△'> = {};
-
-  const axisGroup = tickets.formation_groups.axis_1st?.[0];
-  const honmei =
-    diagnosis.find((d) => d.umaban === axisGroup?.umaban) ||
-    [...diagnosis].sort((a, b) => b.shisu - a.shisu)[0] ||
-    null;
-
-  if (honmei) {
-    markMap[honmei.umaban] = '◎';
-  }
-
-  const targetUmabans: number[] = [];
-  for (const m of tickets.formation_groups.main_2nd || []) {
-    if (m && m.umaban !== honmei?.umaban && !targetUmabans.includes(m.umaban)) {
-      targetUmabans.push(m.umaban);
-    }
-  }
-  for (const s of tickets.formation_groups.saver_3rd || []) {
-    if (s && s.umaban !== honmei?.umaban && !targetUmabans.includes(s.umaban)) {
-      targetUmabans.push(s.umaban);
-    }
-  }
-
-  const targetPool: DiagnosisResult[] = targetUmabans
-    .map((u) => diagnosis.find((d) => d.umaban === u))
-    .filter((d): d is DiagnosisResult => Boolean(d));
-
-  const taikou = targetPool.length >= 1 ? targetPool[0] : null;
-  if (taikou) {
-    markMap[taikou.umaban] = '〇';
-  }
-
-  const tanana = targetPool.length >= 2 ? targetPool[1] : null;
-  if (tanana) {
-    markMap[tanana.umaban] = '▲';
-  }
-
-  const remainingPool = targetPool.slice(2);
-  let tokuchu: DiagnosisResult | null = null;
-  if (remainingPool.length > 0) {
-    tokuchu = [...remainingPool].sort((a, b) => b.myoumi - a.myoumi || b.shisu - a.shisu)[0];
-    markMap[tokuchu.umaban] = '☆';
-  }
-
-  const renshita: DiagnosisResult[] = [];
-  for (const h of remainingPool) {
-    if (h.umaban !== tokuchu?.umaban) {
-      markMap[h.umaban] = '△';
-      renshita.push(h);
-    }
-  }
-
-  let raceNumLabel = '11R';
-  const safeRaceId = String(raceId || '');
-  if (safeRaceId.length >= 2) {
-    const rNum = parseInt(safeRaceId.slice(-2), 10);
-    if (!isNaN(rNum) && rNum >= 1 && rNum <= 12) {
-      raceNumLabel = `${rNum}R`;
-    }
-  }
-
-  const venueStr = placeName || '東京';
-  const cleanTitle = String(raceName || '本日のレース')
-    .replace(/出馬表.*$/, '')
-    .replace(/\(.*?\)/g, '')
-    .trim();
-  const headerTitle = placeName ? `${placeName} ${cleanTitle}` : cleanTitle;
-
-  const lines: string[] = [];
-  lines.push(`${venueStr} ${raceNumLabel}`);
-  lines.push(`【${headerTitle}】AI予想🎯`);
-  if (honmei) lines.push(`◎ ${honmei.umaban} ${honmei.bamei}`);
-  if (taikou) lines.push(`〇 ${taikou.umaban} ${taikou.bamei}`);
-  if (tanana) lines.push(`▲ ${tanana.umaban} ${tanana.bamei}`);
-  if (tokuchu) lines.push(`☆ ${tokuchu.umaban} ${tokuchu.bamei}`);
-  for (const r of renshita) {
-    lines.push(`△ ${r.umaban} ${r.bamei}`);
-  }
-
-  return {
-    markMap,
-    honmei,
-    taikou,
-    tanana,
-    tokuchu,
-    renshita,
-    postText: lines.join('\n'),
-  };
-}
-
-function buildAxisDefensePlan(
-  diagnosis: DiagnosisResult[] | null,
-  tickets: BettingTickets | null,
-  budgetYen: number,
-  allocMode: 'EV_FOCUS' | 'EQUAL_RETURN'
-): AxisDefensePlan | null {
-  if (
-    !Array.isArray(diagnosis) ||
-    diagnosis.length < 3 ||
-    !tickets ||
-    !tickets.formation_groups
-  ) {
-    return null;
-  }
-
-  const byStage2 = [...diagnosis].sort((a, b) => b.shisu - a.shisu);
-  const byStage1 = [...diagnosis].sort((a, b) => b.stage1_shisu - a.stage1_shisu);
-  const byOdds = [...diagnosis].filter((d) => d.odds > 0).sort((a, b) => a.odds - b.odds);
-
-  const axisGroup = tickets.formation_groups.axis_1st?.[0];
-  const axisHorse = diagnosis.find((d) => d.umaban === axisGroup?.umaban) || byStage2[0];
-  const secondHorse = byStage2.find((d) => d.umaban !== axisHorse.umaban) || byStage2[1] || axisHorse;
-  const fav1Horse = byOdds.length > 0 ? byOdds[0] : axisHorse;
-
-  const shisuGap = Number((axisHorse.shisu - secondHorse.shisu).toFixed(1));
-  const axisHasBoxRisk =
-    axisHorse.box_in_risk_level === 'HIGH_BOX_RISK' ||
-    axisHorse.box_in_risk_level === 'MOD_BOX_RISK';
-
-  let level: 'HIGH' | 'MEDIUM' | 'RISK' = 'HIGH';
-  let badgeText = '👑 軸信頼度: S（王道パターン①中心推奨）';
-  let headline = `${axisHorse.umaban}番 ${axisHorse.bamei} の1着固定が本線（2位と+${shisuGap}pt差）`;
-  let reason = `『①素の地力(${axisHorse.stage1_rank}位)』と『②最終指数(1位)』がともにトップクラスで安定。各券種の『パターン①・②』を主軸にしつつ、高配当狙いなら2・3列目ワイドを併用。`;
-
-  const fav1IsVulnerable =
-    fav1Horse.odds <= 2.8 && (fav1Horse.stage2_rank >= 3 || fav1Horse.stage1_rank >= 3);
-  const axisNotPureTop = axisHorse.stage1_rank >= 3 || shisuGap < 1.8;
-
-  if (
-    fav1IsVulnerable ||
-    axisHasBoxRisk ||
-    (axisHorse.odds <= 2.5 && axisHorse.stage1_rank >= 2) ||
-    shisuGap < 1.5
-  ) {
-    level = 'RISK';
-    badgeText = '🚨 軸信頼度: B（波乱・包まれ警戒・2列目×3列目パターン推奨）';
-    if (axisHasBoxRisk) {
-      headline = `⚠️ 1着軸候補(${axisHorse.umaban}番${axisHorse.bamei})に多頭数の内枠包まれ注意印！2・3列目頭逆転＆タテ目ケア推奨`;
-      reason = `能力上位の${axisHorse.bamei}ですが、外から先行勢が被せる隊列のため直線で進路が詰まるリスクがあります。2・3列目ワイドや3連単『パターン③・④（2列目・3列目1着固定）』の併用が極めて有効です。`;
-    } else if (fav1IsVulnerable && fav1Horse.umaban !== axisHorse.umaban) {
-      headline = `⚠️ 1番人気(${fav1Horse.umaban}番${fav1Horse.bamei}:${fav1Horse.odds}倍)に波乱リスク！2・3列目中心のパターン②〜④推奨`;
-      reason = `単勝${fav1Horse.odds}倍の1番人気${fav1Horse.bamei}が素の地力${fav1Horse.stage1_rank}位・最終${fav1Horse.stage2_rank}位に留まっています。2列目×3列目ワイドや、3連複・3連単の『パターン②〜④（対抗・地力救済・穴頭）』の期待値が極めて高いレースです。`;
-    } else {
-      headline = `⚠️ 1位(${axisHorse.umaban}番)と2位(${secondHorse.umaban}番)の指数差が${shisuGap}ptと僅差！逆転＆2・3列目勝負推奨`;
-      reason = `1着軸(${axisHorse.bamei})が素の地力${axisHorse.stage1_rank}位、または上位陣の能力差が僅少です。内枠包まれ等で軸が飛ぶケースも想定し、2・3列目ワイドや3連単『パターン③・④（2列目・3列目頭固定）』の併用を強く推奨します。`;
-    }
-  } else if (axisNotPureTop || shisuGap < 3.5) {
-    level = 'MEDIUM';
-    badgeText = '⚡ 軸信頼度: A（王道＋2・3列目逆転ケア推奨）';
-    headline = `本線は${axisHorse.umaban}番${axisHorse.bamei}も、2列目(${secondHorse.umaban}番)や3列目地力馬の突き抜けに注意`;
-    reason = `2位馬との指数差は+${shisuGap}pt（地力1位は${byStage1[0].umaban}番${byStage1[0].bamei}）です。パターン①をメインにしつつ、2・3列目ワイドやパターン③・④を押さえると高配当の取りこぼしを防げます。`;
-  }
-
-  const row1Umabans = [axisHorse.umaban];
-  const main2ndUmabans = (tickets.formation_groups.main_2nd || []).map((m) => m.umaban);
-  const saver3rdUmabans = [...(tickets.formation_groups.saver_3rd || []).map((s) => s.umaban)];
-
-  if (saver3rdUmabans.length < 2) {
-    for (const d of byStage2) {
-      if (
-        d.umaban !== axisHorse.umaban &&
-        !main2ndUmabans.includes(d.umaban) &&
-        !saver3rdUmabans.includes(d.umaban) &&
-        (d.time_limit_mult ?? 1.0) > 0.88
-      ) {
-        saver3rdUmabans.push(d.umaban);
-      }
-      if (saver3rdUmabans.length >= 3) break;
-    }
-  }
-
-  const allRow2Row3 = Array.from(new Set([...main2ndUmabans, ...saver3rdUmabans]));
-  const allRow1Row2Row3 = Array.from(new Set([axisHorse.umaban, ...allRow2Row3]));
-
-  const jirikiTopInRow23 = byStage1
-    .filter((d) => d.umaban !== axisHorse.umaban && allRow2Row3.includes(d.umaban))
-    .slice(0, 2)
-    .map((d) => d.umaban);
-
-  const saverJirikiAxes = saver3rdUmabans.filter((u) => {
-    const h = diagnosis.find((d) => d.umaban === u);
-    return h && h.stage1_rank <= 4;
-  });
-  const row3JirikiAxis =
-    saverJirikiAxes.length > 0
-      ? saverJirikiAxes.slice(0, 2)
-      : jirikiTopInRow23.slice(0, 2).length > 0
-        ? jirikiTopInRow23.slice(0, 2)
-        : saver3rdUmabans.slice(0, 1);
-
-  const myoumiSortedRow23 = allRow2Row3
-    .map((u) => diagnosis.find((d) => d.umaban === u))
-    .filter((d): d is DiagnosisResult => Boolean(d))
-    .sort((a, b) => b.myoumi - a.myoumi || b.shisu - a.shisu);
-
-  const tokuchuAxis =
-    myoumiSortedRow23.find((d) => saver3rdUmabans.includes(d.umaban))?.umaban ||
-    myoumiSortedRow23[0]?.umaban ||
-    main2ndUmabans[0] ||
-    axisHorse.umaban;
-
-  const makeItem = (
-    id: string,
-    ticketType: 'WIDE' | 'PUKU' | 'TAN',
-    title: string,
-    badge: string,
-    structureText: string,
-    subNote: string,
-    combos: string[]
-  ): PatternTicketItem => {
-    const safeCombos = Array.isArray(combos) ? combos : [];
-    const allocInfo = computePatternAllocations(
-      safeCombos,
-      ticketType,
-      diagnosis,
-      budgetYen,
-      allocMode
-    );
-    return {
-      id,
-      ticketType,
-      title,
-      badge,
-      structureText,
-      subNote,
-      combos: safeCombos,
-      count: safeCombos.length,
-      syntheticOdds: allocInfo.syntheticOdds,
-      totalStakeYen: allocInfo.totalStakeYen,
-      allocations: allocInfo.allocations,
-    };
-  };
-
-  const wide1Combos = generateWideCombos(
-    main2ndUmabans,
-    saver3rdUmabans.length > 0 ? saver3rdUmabans : main2ndUmabans
-  );
-  const wide2Targets = allRow2Row3.filter((u) => !row3JirikiAxis.includes(u)).slice(0, 5);
-  const wide2Combos = generateWideCombos(row3JirikiAxis, wide2Targets);
-  const wide3Targets = allRow2Row3.filter((u) => u !== tokuchuAxis).slice(0, 5);
-  const wide3Combos = generateWideCombos([tokuchuAxis], wide3Targets);
-  const wide4BoxPool = Array.from(
-    new Set([...main2ndUmabans.slice(0, 2), ...saver3rdUmabans.slice(0, 2), ...allRow2Row3])
-  ).slice(0, 4);
-  const wide4Combos = generateWideCombos(wide4BoxPool, wide4BoxPool);
-
-  const widePatterns: PatternTicketItem[] = [
-    makeItem(
-      'W1',
-      'WIDE',
-      'パターン①【王道タテ目】2列目本線 ➔ 3列目 クロス流し',
-      '2列目×3列目本線',
-      `2列目(${main2ndUmabans.join(', ')}) ➔ 3列目(${saver3rdUmabans.join(', ')})`,
-      '1着軸(◎)が飛んでも、2列目本線と3列目救済馬のペアで確実に拾う基本形',
-      wide1Combos
-    ),
-    makeItem(
-      'W2',
-      'WIDE',
-      'パターン②【地力逆襲】3列目(地力上位)軸 ➔ 2・3列目流し',
-      '地力救済軸',
-      `軸: ${row3JirikiAxis.join(', ')}番 ➔ 相手: ${wide2Targets.join(', ')}番`,
-      '外枠等で3列目に回った「素の地力上位馬」から2・3列目へ流す勝負手',
-      wide2Combos
-    ),
-    makeItem(
-      'W3',
-      'WIDE',
-      'パターン③【一撃回収】特注穴(☆妙味トップ)軸 ➔ 2・3列目流し',
-      '妙味特注軸',
-      `特注軸: ${tokuchuAxis}番 ➔ 相手: ${wide3Targets.join(', ')}番`,
-      '妙味指数トップの伏兵から2・3列目の実力馬へぶつける高配当ワイド',
-      wide3Combos
-    ),
-    makeItem(
-      'W4',
-      'WIDE',
-      'パターン④【タテ目凝縮】2列目＋3列目 厳選4頭BOX',
-      '2・3列目BOX',
-      `BOX対象(4頭): ${wide4BoxPool.join(', ')}番`,
-      '2列目上位2頭＋3列目上位2頭の計4頭で組む、ダブル・トリプル的中狙いの6点BOX',
-      wide4Combos
-    ),
-  ];
-
-  const puku1Combos = tickets.sanrenpuku_formation?.combos || [];
-  const puku2Row1 = Array.from(
-    new Set([main2ndUmabans[0], ...row3JirikiAxis, tokuchuAxis].filter(Boolean))
-  ).slice(0, 3);
-  const puku2Row2 = Array.from(
-    new Set([...main2ndUmabans, ...row3JirikiAxis, tokuchuAxis].filter(Boolean))
-  ).slice(0, 5);
-  const puku2Row3 = allRow1Row2Row3;
-  const puku2Combos = generateSanrenpukuFormCombos(puku2Row1, puku2Row2, puku2Row3);
-
-  const puku3BoxPool = allRow2Row3.slice(0, 5);
-  const puku3Combos = generateSanrenpukuFormCombos(puku3BoxPool, puku3BoxPool, puku3BoxPool);
-
-  const puku4Axis = [row3JirikiAxis[0] || tokuchuAxis];
-  const puku4Targets = allRow1Row2Row3.filter((u) => u !== puku4Axis[0]).slice(0, 6);
-  const puku4Combos = generateSanrenpukuFormCombos(puku4Axis, puku4Targets, puku4Targets);
-
-  const sanrenpukuPatterns: PatternTicketItem[] = [
-    makeItem(
-      'P1',
-      'PUKU',
-      'パターン①【王道本線】1着軸(◎) ー 2列目 ー 2・3列目F',
-      '本命軸・王道',
-      `${row1Umabans.join(',')} ー ${main2ndUmabans.join(',')} ー ${allRow2Row3.join(',')}`,
-      '1着軸(◎)を信頼し、2列目本線と3列目救済馬へ流す最も資金効率の良い基本形',
-      puku1Combos
-    ),
-    makeItem(
-      'P2',
-      'PUKU',
-      'パターン②【対抗・3列目軸】2・3列目代表 ー 2・3列目 ー 全相手F',
-      '2・3列目主役',
-      `${puku2Row1.join(',')} ー ${puku2Row2.join(',')} ー ${puku2Row3.join(',')}`,
-      '2列目筆頭と3列目の地力・特注馬を1列目に据え、本命(◎)が3着でも飛んでも獲れる攻めの形',
-      puku2Combos
-    ),
-    makeItem(
-      'P3',
-      'PUKU',
-      'パターン③【軸飛びタテ目】2列目＋3列目上位 5頭BOX',
-      '軸抜きBOX',
-      `BOX対象(5頭): ${puku3BoxPool.join(', ')}番`,
-      '1着軸(◎)が馬群に沈んだ際、2列目と3列目の実力・穴馬同士で高配当を抜く10点BOX',
-      puku3Combos
-    ),
-    makeItem(
-      'P4',
-      'PUKU',
-      'パターン④【3列目一撃】3列目(地力・特注筆頭) 1頭軸流し',
-      '3列目1頭軸',
-      `軸: ${puku4Axis.join(',')}番 ー 相手: ${puku4Targets.join(', ')}番`,
-      '3列目の最有力馬(地力救済/特注☆)が馬券に絡めば、相手どこでも高配当になる1頭軸流し',
-      puku4Combos
-    ),
-  ];
-
-  const tan1Combos = tickets.sanrentan_formation?.combos || [];
-  const tan2Second = saver3rdUmabans.length > 0 ? saver3rdUmabans : main2ndUmabans;
-  const tan2Combos = generateSanrentanFormCombos(row1Umabans, tan2Second, allRow2Row3);
-
-  const tan3First = main2ndUmabans.slice(0, 2);
-  const tan3Second = Array.from(
-    new Set([axisHorse.umaban, ...main2ndUmabans, tokuchuAxis])
-  ).slice(0, 4);
-  const tan3Third = allRow1Row2Row3.slice(0, 7);
-  const tan3Combos = generateSanrentanFormCombos(tan3First, tan3Second, tan3Third);
-
-  const tan4First = Array.from(new Set([...row3JirikiAxis, tokuchuAxis])).slice(0, 2);
-  const tan4Second = Array.from(
-    new Set([...main2ndUmabans, ...saver3rdUmabans.slice(0, 2), axisHorse.umaban])
-  ).slice(0, 5);
-  const tan4Third = allRow1Row2Row3.slice(0, 7);
-  const tan4Combos = generateSanrentanFormCombos(tan4First, tan4Second, tan4Third);
-
-  const sanrentanPatterns: PatternTicketItem[] = [
-    makeItem(
-      'T1',
-      'TAN',
-      'パターン①【王道・本命頭】1列目(◎)1着固定 ➔ 2列目 ➔ 2・3列目',
-      '本命1着固定',
-      `${row1Umabans.join(',')} → ${main2ndUmabans.join(',')} → ${allRow2Row3.join(',')}`,
-      '不動の本命(◎)を1着に固定し、2着に2列目本線、3着に3列目まで広げる王道勝負馬券',
-      tan1Combos
-    ),
-    makeItem(
-      'T2',
-      'TAN',
-      'パターン②【2着ヒモ荒れ】1列目(◎)1着固定 ➔ 3列目2着 ➔ 2・3列目',
-      '3列目2着抜擢',
-      `${row1Umabans.join(',')} → ${tan2Second.join(',')} → ${allRow2Row3.join(',')}`,
-      '本命(◎)が勝ち、2着に3列目の地力馬・穴馬が突っ込む高配当1着固定',
-      tan2Combos
-    ),
-    makeItem(
-      'T3',
-      'TAN',
-      'パターン③【2列目頭固定】2列目本線(〇▲)1着 ➔ 本命・相手 ➔ 全相手',
-      '2列目1着固定',
-      `${tan3First.join(',')} → ${tan3Second.join(',')} → ${tan3Third.join(',')}`,
-      'バイアス合致の2列目本線が勝ち切り、2・3着に本命や3列目が入る頭逆転フォーメーション',
-      tan3Combos
-    ),
-    makeItem(
-      'T4',
-      'TAN',
-      'パターン④【3列目頭・大波乱】3列目(地力・特注)1着 ➔ 2・3列目 ➔ 全相手',
-      '3列目1着固定',
-      `${tan4First.join(',')} → ${tan4Second.join(',')} → ${tan4Third.join(',')}`,
-      '3列目の地力上位馬・特注穴が1着で突き抜け、2・3列目で決まる大波乱仕様',
-      tan4Combos
-    ),
-  ];
-
-  return {
-    level,
-    badgeText,
-    headline,
-    reason,
-    widePatterns,
-    sanrenpukuPatterns,
-    sanrentanPatterns,
-  };
-}
-
-export default function Home() {
-  const [raceId, setRaceId] = useState('202605041111');
-  const [fetching, setFetching] = useState(false);
-
-  const [targetRaceName, setTargetRaceName] = useState('');
-  const [targetPlace, setTargetPlace] = useState('東京');
-  const [courseRailMessage, setCourseRailMessage] = useState('');
-  const [courseRpci, setCourseRpci] = useState<number | null>(null);
-  const [courseRpciType, setCourseRpciType] = useState<string>('');
-  const [referenceBenchmarks, setReferenceBenchmarks] = useState<ReferenceBenchmarks | null>(null);
-
-  const [courseType, setCourseType] = useState('芝');
-  const [distance, setDistance] = useState(2000);
-  const [weather, setWeather] = useState('晴');
-  const [trackCondition, setTrackCondition] = useState('良');
-  const [expectedPace, setExpectedPace] = useState('M_JIRIKI');
-
-  const [trackBias, setTrackBias] = useState('フラット');
-  const [biasStrength, setBiasStrength] = useState('中');
-
-  const [cushionValue, setCushionValue] = useState<number>(9.5);
-  const [autoStatus, setAutoStatus] = useState<AutoStatusInfo | null>(null);
-
-  const [customDirOverride, setCustomDirOverride] = useState<'AUTO' | 'LEFT' | 'RIGHT'>('AUTO');
-  const [customStartMode, setCustomStartMode] = useState<StartModeType>('AUTO');
-
-  const [budgetYen, setBudgetYen] = useState<number>(3000);
-  const [allocMode, setAllocMode] = useState<'EV_FOCUS' | 'EQUAL_RETURN'>('EV_FOCUS');
-
-  const [horses, setHorses] = useState<HorseData[]>([
-    {
-      wakuban: 1,
-      umaban: 1,
-      bamei: '馬名を入力',
-      kishu: '騎手',
-      odds: 0.0,
-      kinryou: 55,
-      bataijuu: 480,
-      weight_change: 0,
-      condition_override: '1.00',
-      condition_reason: '',
-      training_rank: 'B',
-      training_4f: '',
-      training_1f: '',
-      rotation_mult: 1.0,
-      rotation_label: '',
-      zenso_chakujun: 9,
-      avg_agari: 35.0,
-      kyakushitsu: 2,
-      shussou_kaisuu: 0,
-      pci: 50.0,
-      pci_type: 'B',
-      early_3f_sec: 35.5,
-      history_details: [],
-    },
-  ]);
-
-  const [diagnosisResults, setDiagnosisResults] = useState<DiagnosisResult[] | null>(null);
-  const [bettingTickets, setBettingTickets] = useState<BettingTickets | null>(null);
-  const [currentWin5Profile, setCurrentWin5Profile] = useState<Win5Profile | null>(null);
-  const [activeStageView, setActiveStageView] = useState<'STAGE1' | 'STAGE2'>('STAGE2');
-  const [activePatternTab, setActivePatternTab] = useState<'WIDE' | 'PUKU' | 'TAN' | 'ALL'>('ALL');
-  const [isDiagnosing, setIsDiagnosing] = useState(false);
-
-  const [xPostText, setXPostText] = useState('');
-  const [copiedFlag, setCopiedFlag] = useState(false);
-
-  const [savedRacesHistory, setSavedRacesHistory] = useState<SavedRaceHistoryItem[]>([]);
-
-  const [showWin5Panel, setShowWin5Panel] = useState<boolean>(false);
-  const [win5InputIds, setWin5InputIds] = useState<string[]>([
-    '202608040410',
-    '202605040410',
-    '202603030411',
-    '202608040411',
-    '202605040411',
-  ]);
-  const [win5Slots, setWin5Slots] = useState<(Win5SlotData | null)[]>([
-    null,
-    null,
-    null,
-    null,
-    null,
-  ]);
-  const [win5TargetPoints, setWin5TargetPoints] = useState<number>(36);
-  const [win5BatchLoading, setWin5BatchLoading] = useState<boolean>(false);
-  const [win5BatchProgressText, setWin5BatchProgressText] = useState<string>('');
-  const [win5PostText, setWin5PostText] = useState<string>('');
-  const [win5CopiedFlag, setWin5CopiedFlag] = useState<boolean>(false);
-
-  const [results, setResults] = useState<RaceResult[] | null>(null);
-  const [raceInfo, setRaceInfo] = useState<{
-    req_up: number;
-    pace_f: number;
-    pace_l: number;
-    rpci?: number;
-    rpci_type?: string;
-  } | null>(null);
-
-  const [loading, setLoading] = useState(false);
-  const [isRacing, setIsRacing] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-  const [simProgress, setSimProgress] = useState(0);
-  const [simHorseStates, setSimHorseStates] = useState<SimHorseTrackState[]>([]);
-  const [simPhaseLabel, setSimPhaseLabel] = useState('');
-
-  const [simRunId, setSimRunId] = useState(0);
-  const animFrameRef = useRef<number | null>(null);
-  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 初回マウント時にローカルストレージから安全に履歴・WIN5スロットを復元
-  useEffect(() => {
-    try {
-      const savedHistStr = localStorage.getItem('keiba_pro_saved_races_v1');
-      if (savedHistStr) {
-        const parsed = JSON.parse(savedHistStr);
-        if (Array.isArray(parsed)) {
-          const validHist = parsed.filter(
-            (x) => x && typeof x.raceId === 'string' && x.raceId.length > 0
-          );
-          setSavedRacesHistory(validHist);
-        }
-      }
-      const savedWin5Str = localStorage.getItem('keiba_pro_win5_slots_v1');
-      if (savedWin5Str) {
-        const parsedW5 = JSON.parse(savedWin5Str);
-        if (Array.isArray(parsedW5) && parsedW5.length === 5) {
-          const sanitizedSlots = parsedW5.map((s) => {
-            if (!s || !s.win5Profile || !Array.isArray(s.win5Profile.candidates)) return null;
-            return {
-              ...s,
-              selectedUmabans: Array.isArray(s.selectedUmabans) ? s.selectedUmabans : [],
-            };
-          });
-          setWin5Slots(sanitizedSlots);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }, []);
-
-  const marksSummary = buildHorseMarksAndPostText(
-    diagnosisResults,
-    bettingTickets,
-    targetRaceName,
-    targetPlace,
-    raceId
-  );
-
-  useEffect(() => {
-    if (marksSummary?.postText) {
-      setXPostText(marksSummary.postText);
-    }
-  }, [marksSummary?.postText]);
-
-  useEffect(() => {
-    const txt = buildWin5PostText(win5Slots);
-    setWin5PostText(txt);
-    try {
-      localStorage.setItem('keiba_pro_win5_slots_v1', JSON.stringify(win5Slots));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [win5Slots]);
-
-  const saveRaceToHistory = (item: SavedRaceHistoryItem) => {
-    setSavedRacesHistory((prev) => {
-      const filtered = prev.filter((x) => x && x.raceId !== item.raceId);
-      const next = [item, ...filtered].slice(0, 10);
-      try {
-        localStorage.setItem('keiba_pro_saved_races_v1', JSON.stringify(next));
-      } catch (e) {
-        console.error(e);
-      }
-      return next;
-    });
-  };
-
-  // ★追加: 診断済み履歴の1件削除 ＆ 全件一括削除関数
-  const handleDeleteHistoryItem = (targetId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSavedRacesHistory((prev) => {
-      const next = prev.filter((x) => x && x.raceId !== targetId);
-      try {
-        localStorage.setItem('keiba_pro_saved_races_v1', JSON.stringify(next));
-      } catch (err) {
-        console.error(err);
-      }
-      return next;
-    });
-  };
-
-  const handleClearAllHistory = () => {
-    setSavedRacesHistory([]);
-    try {
-      localStorage.removeItem('keiba_pro_saved_races_v1');
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // ★追加: WIN5スロットの個別クリア ＆ 全クリア関数
-  const handleClearWin5Slot = (slotIdx: number) => {
-    setWin5Slots((prev) => prev.map((s, i) => (i === slotIdx ? null : s)));
-  };
-
-  const handleClearAllWin5Slots = () => {
-    setWin5Slots([null, null, null, null, null]);
-    setWin5BatchProgressText('');
-    try {
-      localStorage.removeItem('keiba_pro_win5_slots_v1');
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleLoadFromHistory = (item: SavedRaceHistoryItem) => {
-    setRaceId(String(item.raceId || ''));
-    setTargetRaceName(String(item.targetRaceName || ''));
-    setTargetPlace(String(item.targetPlace || '東京'));
-    setCourseRailMessage(String(item.courseRailMessage || ''));
-    setCourseRpci(item.courseRpci ?? null);
-    setCourseRpciType(String(item.courseRpciType || ''));
-    setReferenceBenchmarks(item.referenceBenchmarks || null);
-    setCourseType(String(item.courseType || '芝'));
-    setDistance(Number(item.distance || 2000));
-    setWeather(String(item.weather || '晴'));
-    setTrackCondition(String(item.trackCondition || '良'));
-    setExpectedPace(String(item.expectedPace || 'M_JIRIKI'));
-    setTrackBias(String(item.trackBias || 'フラット'));
-    setBiasStrength(String(item.biasStrength || '中'));
-    setCushionValue(Number(item.cushionValue || 9.5));
-    setAutoStatus(item.autoStatus || null);
-    setHorses(Array.isArray(item.horses) ? item.horses : []);
-    setDiagnosisResults(Array.isArray(item.diagnosisResults) ? item.diagnosisResults : null);
-    setBettingTickets(item.bettingTickets || null);
-    setCurrentWin5Profile(item.win5Profile || null);
-    setRaceInfo(item.raceInfo || null);
-    setResults(null);
-    setIsRacing(false);
-    setShowResults(false);
-  };
-
-  const handleApplyWin5TargetPoints = (
-    targetPts: number,
-    customSlots?: (Win5SlotData | null)[]
-  ) => {
-    setWin5TargetPoints(targetPts);
-    const baseSlots = customSlots || win5Slots;
-    const optCounts = computeOptimalWin5Counts(baseSlots, targetPts);
-    const updated = baseSlots.map((slot, idx) => {
-      if (!slot || !slot.win5Profile) return null;
-      const cands = Array.isArray(slot.win5Profile.candidates)
-        ? slot.win5Profile.candidates
-        : [];
-      const cnt = optCounts[idx] || 1;
-      const topUmabans = cands.slice(0, cnt).map((c) => c.umaban);
-      return {
-        ...slot,
-        selectedUmabans: topUmabans,
-      };
-    });
-    setWin5Slots(updated);
-  };
-
-  const handleRegisterCurrentToWin5 = (slotIdx: number) => {
-    if (!Array.isArray(diagnosisResults) || diagnosisResults.length === 0 || !bettingTickets) {
-      alert('先にSTEP 2の下部ボタンから「最終診断」を実行してください。');
-      return;
-    }
-    const prof = ensureValidWin5Profile(currentWin5Profile, diagnosisResults, bettingTickets);
-    let rNumLabel = '11R';
-    const safeRid = String(raceId || '');
-    if (safeRid.length >= 2) {
-      const rn = parseInt(safeRid.slice(-2), 10);
-      if (!isNaN(rn)) rNumLabel = `${rn}R`;
-    }
-
-    const cands = Array.isArray(prof.candidates) ? prof.candidates : [];
-    const newSlot: Win5SlotData = {
-      slotIndex: slotIdx,
-      raceId: safeRid,
-      placeName: targetPlace || '東京',
-      raceNumLabel: rNumLabel,
-      raceName: targetRaceName || `レース${slotIdx + 1}`,
-      courseType,
-      distance,
-      win5Profile: prof,
-      selectedUmabans: cands.slice(0, prof.recommended_count || 2).map((c) => c.umaban),
-    };
-
-    const nextSlots = [...win5Slots];
-    nextSlots[slotIdx] = newSlot;
-    const nextIds = [...win5InputIds];
-    nextIds[slotIdx] = safeRid;
-    setWin5InputIds(nextIds);
-
-    handleApplyWin5TargetPoints(win5TargetPoints, nextSlots);
-    setShowWin5Panel(true);
-  };
-
-  const handleToggleWin5Horse = (slotIdx: number, umaban: number) => {
-    setWin5Slots((prev) =>
-      prev.map((slot, i) => {
-        if (i !== slotIdx || !slot) return slot;
-        const curSel = Array.isArray(slot.selectedUmabans) ? slot.selectedUmabans : [];
-        const exists = curSel.includes(umaban);
-        let nextSel: number[];
-        if (exists) {
-          if (curSel.length <= 1) return slot;
-          nextSel = curSel.filter((u) => u !== umaban);
-        } else {
-          nextSel = [...curSel, umaban];
-        }
-        return { ...slot, selectedUmabans: nextSel };
-      })
-    );
-  };
-
-  /**
-   * ★安全強化版: 出馬表が未発表（0頭）のレースIDが混ざっていてもエラー停止せずスキップして完走するWIN5連続解析
-   */
-  const handleBatchFetchWin5 = async () => {
-    const validIds = win5InputIds.map((x) => String(x || '').trim());
-    if (validIds.some((x) => x.length < 10)) {
-      alert('WIN5対象の5つのレースID（12桁）をすべて入力してください。');
-      return;
-    }
-
-    setWin5BatchLoading(true);
-    const nextSlots: (Win5SlotData | null)[] = [...win5Slots];
-    const skippedNotes: string[] = [];
-
-    try {
-      for (let i = 0; i < 5; i++) {
-        const rid = validIds[i];
-        setWin5BatchProgressText(`⏳ WIN5自動解析中 (${i + 1}/5レース目: ID ${rid})...`);
-
-        const resFetch = await fetch(`https://keiba-api-hybt.onrender.com/fetch_race/${rid}`);
-        if (!resFetch.ok) {
-          skippedNotes.push(`第${i + 1}戦(${rid}): 通信エラー`);
-          continue;
-        }
-        const fetchJson = await resFetch.json();
-        const rawHorses = Array.isArray(fetchJson?.horses) ? fetchJson.horses : [];
-
-        if (fetchJson.status !== 'success' || rawHorses.length < 2) {
-          skippedNotes.push(
-            `第${i + 1}戦(${rid}): ${fetchJson.message || '出馬表データ未発表(0頭)'}`
-          );
-          continue;
-        }
-
-        const cType = fetchJson.course_type || '芝';
-        const dist = Number(fetchJson.distance || 2000);
-        const wthr = fetchJson.weather || '晴';
-        const tCond = fetchJson.track_condition || '良';
-        const ePace = fetchJson.recommended_pace || 'M_JIRIKI';
-        const tBias = fetchJson.auto_track_bias || 'フラット';
-        const bStr = fetchJson.auto_bias_strength || '中';
-        const cVal = cType === '芝' && ['稍', '重', '不'].includes(tCond) ? 8.6 : 9.5;
-
-        const resDiag = await fetch('https://keiba-api-hybt.onrender.com/diagnose_race', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            race_id: rid,
-            horses: rawHorses,
-            course_type: cType,
-            distance: dist,
-            weather: wthr,
-            track_condition: tCond,
-            expected_pace: ePace,
-            track_bias: tBias,
-            bias_strength: bStr,
-            cushion_value: cVal,
-          }),
-        });
-        if (!resDiag.ok) {
-          skippedNotes.push(`第${i + 1}戦(${rid}): 診断APIエラー`);
-          continue;
-        }
-        const diagJson = await resDiag.json();
-        const diagList: DiagnosisResult[] = Array.isArray(diagJson?.diagnosis)
-          ? diagJson.diagnosis
-          : [];
-
-        if (diagList.length === 0) {
-          skippedNotes.push(`第${i + 1}戦(${rid}): 診断結果が空です`);
-          continue;
-        }
-
-        const prof: Win5Profile = ensureValidWin5Profile(
-          diagJson.win5_profile,
-          diagList,
-          diagJson.betting_tickets
-        );
-
-        let rNumLabel = '11R';
-        if (rid.length >= 2) {
-          const rn = parseInt(rid.slice(-2), 10);
-          if (!isNaN(rn)) rNumLabel = `${rn}R`;
-        }
-
-        const pName = normalizeToSupportedVenue(fetchJson.place_name || '東京');
-        const cands = Array.isArray(prof.candidates) ? prof.candidates : [];
-
-        nextSlots[i] = {
-          slotIndex: i,
-          raceId: rid,
-          placeName: pName,
-          raceNumLabel: rNumLabel,
-          raceName: String(fetchJson.race_name || `WIN5 第${i + 1}戦`),
-          courseType: cType,
-          distance: dist,
-          win5Profile: prof,
-          selectedUmabans: cands.slice(0, prof.recommended_count || 2).map((c) => c.umaban),
-        };
-
-        saveRaceToHistory({
-          raceId: rid,
-          savedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          targetRaceName: String(fetchJson.race_name || ''),
-          targetPlace: pName,
-          courseRailMessage: String(fetchJson.course_rail_message || ''),
-          courseRpci: fetchJson.rpci || 50.0,
-          courseRpciType: String(fetchJson.rpci_type || 'B'),
-          referenceBenchmarks: fetchJson.reference_benchmarks || null,
-          courseType: cType,
-          distance: dist,
-          weather: wthr,
-          trackCondition: tCond,
-          expectedPace: ePace,
-          trackBias: tBias,
-          biasStrength: bStr,
-          cushionValue: cVal,
-          autoStatus: fetchJson.auto_status || null,
-          horses: rawHorses,
-          diagnosisResults: diagList,
-          bettingTickets: diagJson.betting_tickets || null,
-          win5Profile: prof,
-          raceInfo: {
-            req_up: diagJson.req_up,
-            pace_f: diagJson.pace_f,
-            pace_l: diagJson.pace_l,
-            rpci: diagJson.rpci,
-            rpci_type: diagJson.rpci_type,
-          },
-        });
-      }
-
-      handleApplyWin5TargetPoints(win5TargetPoints, nextSlots);
-      if (skippedNotes.length > 0) {
-        setWin5BatchProgressText(
-          `⚠️ 一部スキップあり（${skippedNotes.join(' / ')}）※有効なレースのみ反映しました`
-        );
-      } else {
-        setWin5BatchProgressText('✅ WIN5 全5レースのAI解析＆最適点数配分が完了しました！');
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert(err?.message || 'WIN5連続解析中にエラーが発生しました。');
-      setWin5BatchProgressText('');
-    } finally {
-      setWin5BatchLoading(false);
-    }
-  };
-
-  const activeVenueKey = normalizeToSupportedVenue(targetPlace || '東京');
-  const venueProfile = getVenueProfile(activeVenueKey);
-  const effectiveDir: 'LEFT' | 'RIGHT' =
-    customDirOverride === 'AUTO' ? venueProfile.dir : customDirOverride;
-  const startConfig = resolveStartConfig(activeVenueKey, courseType, distance, customStartMode);
-
-  useEffect(() => {
-    if (!isRacing || !Array.isArray(results) || results.length === 0) {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
-      return;
-    }
-
-    const vProf = getVenueProfile(activeVenueKey);
-    const sConf = resolveStartConfig(activeVenueKey, courseType, distance, customStartMode);
-    const { resolvedMode, startLabel, startLapPos, totalLaps } = sConf;
-    const totalH = results.length;
-
-    const horseProfiles = results.map((r) => {
-      const hInput = horses.find((h) => h.umaban === r.umaban);
-      const kyaku = hInput ? Math.round(Number(hInput.kyakushitsu)) : 2;
-      const waku = hInput ? Number(hInput.wakuban || r.umaban) : r.umaban;
-
-      let hasMakuriHistory = false;
-      const hist = hInput?.history_details || [];
-      for (const hd of hist) {
-        const pNums = String(hd.passing || '')
-          .split('-')
-          .map((x) => parseInt(x, 10))
-          .filter((n) => !isNaN(n));
-        if (pNums.length >= 2 && pNums[0] - pNums[pNums.length - 1] >= 3) {
-          hasMakuriHistory = true;
-          break;
-        }
-      }
-
-      const isMakuriHorse =
-        (hasMakuriHistory && kyaku >= 2 && r.rank <= 7) ||
-        ((expectedPace === 'S_LONSPA' || expectedPace === 'M_LONSPA') &&
-          kyaku === 3 &&
-          r.rank <= 4) ||
-        (kyaku === 4 && r.rank <= 2);
-
-      const seed = ((r.umaban * 17) % 10) / 1000;
-      const earlyLag =
-        kyaku === 1
-          ? 0.002 + seed * 1.5
-          : kyaku === 2
-            ? 0.025 + seed * 2.5
-            : kyaku === 3
-              ? 0.062 + seed * 3.0
-              : 0.098 + seed * 3.0;
-
-      const midLag = isMakuriHorse
-        ? Math.max(0.008, earlyLag * 0.22)
-        : kyaku === 1
-          ? 0.002 + seed
-          : kyaku === 2
-            ? 0.022 + seed * 2.0
-            : kyaku === 3
-              ? 0.052 + seed * 2.5
-              : 0.082 + seed * 2.5;
-
-      const finishLag = (r.rank - 1) * 0.0052 + (r.rank > 5 ? (r.rank - 5) * 0.002 : 0);
-
-      const wakuRatio = Math.max(0, Math.min(1, (waku - 1) / Math.max(1, totalH - 1)));
-      const startLane = 2 + wakuRatio * 20;
-      const cruiseLane =
-        kyaku === 1
-          ? 1.5 + (r.umaban % 2) * 3.0
-          : kyaku === 2
-            ? 3.5 + wakuRatio * 9.0
-            : kyaku === 3
-              ? 5.5 + wakuRatio * 12.0
-              : 4.5 + wakuRatio * 13.0;
-
-      const makuriLane = isMakuriHorse ? Math.min(25, cruiseLane + 11.0) : cruiseLane;
-      const straightLane =
-        r.rank <= 5 && kyaku >= 3
-          ? Math.min(26, Math.max(14, cruiseLane + 9.0))
-          : kyaku === 1
-            ? 2.0
-            : Math.min(22, cruiseLane + (r.rank % 3) * 2.5);
-
-      return {
-        umaban: r.umaban,
-        bamei: r.bamei,
-        rank: r.rank,
-        kyakushitsu: kyaku,
-        isMakuriHorse,
-        earlyLag,
-        midLag,
-        finishLag,
-        startLane,
-        cruiseLane,
-        makuriLane,
-        straightLane,
-      };
-    });
-
-    const totalDurationMs = 13500;
-    const startTime = performance.now();
-
-    const step = (now: number) => {
-      const elapsed = Math.max(0, now - startTime);
-      const t = Math.min(1.0, elapsed / totalDurationMs);
-      setSimProgress(t);
-
-      const leadPosInfo = getHorseSimPosition(
-        t,
-        effectiveDir,
-        resolvedMode,
-        startLapPos,
-        totalLaps,
-        4
-      );
-      const leadLapPos = ((leadPosInfo.lapPosForElev % 1) + 1) % 1;
-      const activeSlope = vProf.slopeZones.find(
-        (z) => leadLapPos >= z.startLap && leadLapPos <= z.endLap
-      );
-
-      if (t < 0.14) {
-        setSimPhaseLabel(`🚪 スタート（${startLabel}）＆ 先行争い`);
-      } else if (t < 0.45) {
-        setSimPhaseLabel(
-          activeSlope
-            ? `⛰️ 向正面巡航 ［現在: ${activeSlope.label}］`
-            : '🐎 向正面（バックストレッチ）折り合い・隊列巡航'
-        );
-      } else if (t < 0.74) {
-        setSimPhaseLabel(
-          activeSlope
-            ? `🔥 3〜4コーナー勝負所・まくり進出 ［${activeSlope.label}］`
-            : '🔥 3〜4コーナー勝負所（後続まくり・ペースアップ！）'
-        );
-      } else if (t < 0.99) {
-        setSimPhaseLabel(
-          activeSlope
-            ? `⚡ 最後の直線・末脚勝負！ ［${activeSlope.label}］`
-            : `⚡ 最後の直線（${vProf.straightMeter}m）・全馬スパート！`
-        );
-      } else {
-        setSimPhaseLabel('🏁 ゴールイン！（写真判定・着順確定）');
-      }
-
-      const nextStates: SimHorseTrackState[] = horseProfiles.map((hp) => {
-        let p = 0;
-        const p1 = Math.max(0.02, 0.25 - hp.earlyLag * 0.65);
-        const p2 = Math.max(p1 + 0.05, 0.5 - hp.earlyLag);
-        const p3 = Math.max(p2 + 0.05, 0.74 - hp.midLag);
-        const p4 = 1.0 - hp.finishLag;
-
-        if (t <= 0.25) {
-          p = (t / 0.25) * p1;
-        } else if (t <= 0.5) {
-          p = p1 + ((t - 0.25) / 0.25) * (p2 - p1);
-        } else if (t <= 0.74) {
-          const local = (t - 0.5) / 0.24;
-          const eased = hp.isMakuriHorse ? Math.pow(local, 0.8) : local;
-          p = p2 + eased * (p3 - p2);
-        } else {
-          const local = (t - 0.74) / 0.26;
-          const spurtPower = hp.kyakushitsu >= 3 && hp.rank <= 3 ? Math.pow(local, 0.82) : local;
-          p = p3 + spurtPower * (p4 - p3);
-        }
-
-        let lane = hp.cruiseLane;
-        if (t < 0.2) {
-          const lRatio = t / 0.2;
-          lane = hp.startLane + (hp.cruiseLane - hp.startLane) * lRatio;
-        } else if (t < 0.48) {
-          lane = hp.cruiseLane;
-        } else if (t < 0.74) {
-          const lRatio = (t - 0.48) / 0.26;
-          lane = hp.cruiseLane + (hp.makuriLane - hp.cruiseLane) * lRatio;
-        } else {
-          const lRatio = Math.min(1, (t - 0.74) / 0.14);
-          lane = hp.makuriLane + (hp.straightLane - hp.makuriLane) * lRatio;
-        }
-
-        const pt = getHorseSimPosition(p, effectiveDir, resolvedMode, startLapPos, totalLaps, lane);
-
-        return {
-          umaban: hp.umaban,
-          bamei: hp.bamei,
-          rank: hp.rank,
-          kyakushitsu: hp.kyakushitsu,
-          isMakuriHorse: hp.isMakuriHorse,
-          x: pt.x,
-          y: pt.y,
-          currentProgress: p,
-          isMakuriActiveNow: hp.isMakuriHorse && t >= 0.46 && t <= 0.78,
-          isSpurtActiveNow: hp.rank <= 3 && t >= 0.75 && t < 1.0,
-        };
-      });
-
-      setSimHorseStates(nextStates);
-
-      if (t < 1.0) {
-        animFrameRef.current = requestAnimationFrame(step);
-      } else {
-        resultTimerRef.current = setTimeout(() => {
-          setShowResults(true);
-        }, 600);
-      }
-    };
-
-    animFrameRef.current = requestAnimationFrame(step);
-
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (resultTimerRef.current) clearTimeout(resultTimerRef.current);
-    };
-  }, [
-    isRacing,
-    simRunId,
-    results,
-    activeVenueKey,
-    courseType,
-    distance,
-    expectedPace,
-    effectiveDir,
-    customStartMode,
-    horses,
-  ]);
-
-  const handleCopyPostText = async () => {
-    try {
-      await navigator.clipboard.writeText(xPostText);
-      setCopiedFlag(true);
-      setTimeout(() => setCopiedFlag(false), 2000);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleShareToX = () => {
-    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(xPostText)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleCopyWin5Post = async () => {
-    try {
-      await navigator.clipboard.writeText(win5PostText);
-      setWin5CopiedFlag(true);
-      setTimeout(() => setWin5CopiedFlag(false), 2000);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleShareWin5ToX = () => {
-    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(win5PostText)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleFetchRace = async () => {
-    if (!raceId) {
-      alert('レースIDを入力してください');
-      return;
-    }
-    setFetching(true);
-    try {
-      const response = await fetch(`https://keiba-api-hybt.onrender.com/fetch_race/${raceId}`);
-      if (!response.ok) throw new Error('通信エラー');
-      const data = await response.json();
-      if (data.status === 'success') {
-        const rawHorses: Partial<HorseData>[] = Array.isArray(data.horses) ? data.horses : [];
-        const mappedHorses: HorseData[] = rawHorses.map((h, idx) => ({
-          wakuban: Number(h.wakuban ?? 1),
-          umaban: Number(h.umaban ?? idx + 1),
-          bamei: String(h.bamei ?? ''),
-          kishu: String(h.kishu ?? ''),
-          odds: Number(h.odds ?? 0.0),
-          kinryou: Number(h.kinryou ?? 55),
-          bataijuu: Number(h.bataijuu ?? 480),
-          weight_change: Number(h.weight_change ?? 0),
-          condition_override: String(h.condition_override ?? '1.00'),
-          condition_reason: String(h.condition_reason ?? ''),
-          training_rank: String(h.training_rank ?? 'B'),
-          training_4f: '',
-          training_1f: '',
-          rotation_mult: Number(h.rotation_mult ?? 1.0),
-          rotation_label: String(h.rotation_label ?? ''),
-          zenso_chakujun: Number(h.zenso_chakujun ?? 9),
-          avg_agari: Number(h.avg_agari ?? 35.0),
-          kyakushitsu: Number(h.kyakushitsu ?? 2),
-          shussou_kaisuu: Number(h.shussou_kaisuu ?? 0),
-          pci: Number(h.pci ?? 50.0),
-          pci_type: String(h.pci_type ?? 'B'),
-          early_3f_sec: Number(h.early_3f_sec ?? 35.5),
-          history_details: Array.isArray(h.history_details) ? h.history_details : [],
-        }));
-        setHorses(mappedHorses);
-
-        const cType = data.course_type || '芝';
-        const tCond = data.track_condition || '良';
-        setCourseType(cType);
-        setDistance(Number(data.distance || 2000));
-        setWeather(data.weather || '晴');
-        setTrackCondition(tCond);
-        setCourseRailMessage(data.course_rail_message || '');
-
-        const recPace = data.recommended_pace || 'M_JIRIKI';
-        setExpectedPace(PACE_SCENARIOS[recPace] ? recPace : 'M_JIRIKI');
-        setCourseRpci(data.rpci || 50.0);
-        setCourseRpciType(data.rpci_type || 'B');
-        setReferenceBenchmarks(data.reference_benchmarks || null);
-
-        setTrackBias(data.auto_track_bias || 'フラット');
-        setBiasStrength(data.auto_bias_strength || '中');
-        setCushionValue(cType === '芝' && ['稍', '重', '不'].includes(tCond) ? 8.6 : 9.5);
-
-        setTargetRaceName(data.race_name || '');
-        setTargetPlace(normalizeToSupportedVenue(data.place_name || '東京'));
-        setCustomDirOverride('AUTO');
-        setCustomStartMode('AUTO');
-        setAutoStatus(data.auto_status || null);
-
-        alert(
-          `${mappedHorses.length}頭の出馬表・過去5走履歴・前年/今年度タイム・包まれリスク印を取得しました！\n\n` +
-            `${data.auto_status?.odds_message || ''}\n\n` +
-            `${data.auto_status?.pace_message || ''}\n\n` +
-            `${data.auto_status?.bias_message || ''}\n\n` +
-            `${data.auto_status?.weight_message || ''}`
-        );
-
-        setDiagnosisResults(null);
-        setBettingTickets(null);
-        setCurrentWin5Profile(null);
-        setResults(null);
-        setRaceInfo(null);
-        setIsRacing(false);
-        setShowResults(false);
-      } else {
-        alert(`エラー: ${data.message}`);
-      }
-    } catch (error) {
-      console.error(error);
-      alert('データ取得に失敗しました。サーバーが起動しているか確認してください。');
-    } finally {
-      setFetching(false);
-    }
-  };
-
-  const handleChange = (index: number, field: keyof HorseData, value: string) => {
-    const newHorses = [...horses];
-    const current = { ...newHorses[index] };
-    if (
-      field === 'bamei' ||
-      field === 'kishu' ||
-      field === 'pci_type' ||
-      field === 'condition_override' ||
-      field === 'condition_reason' ||
-      field === 'training_rank' ||
-      field === 'rotation_label'
-    ) {
-      current[field] = value;
-    } else if (field === 'training_4f' || field === 'training_1f') {
-      current[field] = value;
-      const autoRank = evaluateTrainingRankFromClock(
-        field === 'training_4f' ? value : current.training_4f,
-        field === 'training_1f' ? value : current.training_1f
-      );
-      if (autoRank) {
-        current.training_rank = autoRank;
-      }
-    } else if (field !== 'history_details') {
-      current[field] = parseFloat(value) || 0;
-    }
-    newHorses[index] = current;
-    setHorses(newHorses);
-  };
-
-  const runDiagnosisWithMode = async (mode: 'STAGE1' | 'STAGE2') => {
-    setIsDiagnosing(true);
-    setActiveStageView(mode);
-    setResults(null);
-    setIsRacing(false);
-    setShowResults(false);
-
-    try {
-      const response = await fetch('https://keiba-api-hybt.onrender.com/diagnose_race', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          race_id: raceId,
-          horses: horses,
-          course_type: courseType,
-          distance: distance,
-          weather: weather,
-          track_condition: trackCondition,
-          expected_pace: expectedPace,
-          track_bias: trackBias,
-          bias_strength: biasStrength,
-          cushion_value: cushionValue,
-        }),
-      });
-
-      if (!response.ok) throw new Error('API通信エラー');
-      const data = await response.json();
-      const diagList: DiagnosisResult[] = Array.isArray(data?.diagnosis) ? data.diagnosis : [];
-      setDiagnosisResults(diagList);
-      setBettingTickets(data.betting_tickets || null);
-      const w5Prof: Win5Profile = ensureValidWin5Profile(
-        data.win5_profile,
-        diagList,
-        data.betting_tickets
-      );
-      setCurrentWin5Profile(w5Prof);
-
-      const newRaceInfo = {
-        req_up: data.req_up,
-        pace_f: data.pace_f,
-        pace_l: data.pace_l,
-        rpci: data.rpci,
-        rpci_type: data.rpci_type,
-      };
-      setRaceInfo(newRaceInfo);
-
-      saveRaceToHistory({
-        raceId,
-        savedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        targetRaceName,
-        targetPlace,
-        courseRailMessage,
-        courseRpci,
-        courseRpciType,
-        referenceBenchmarks,
-        courseType,
-        distance,
-        weather,
-        trackCondition,
-        expectedPace,
-        trackBias,
-        biasStrength,
-        cushionValue,
-        autoStatus,
-        horses,
-        diagnosisResults: diagList,
-        bettingTickets: data.betting_tickets || null,
-        win5Profile: w5Prof,
-        raceInfo: newRaceInfo,
-      });
-    } catch (error) {
-      console.error(error);
-      alert('エラーが発生しました。');
-    } finally {
-      setIsDiagnosing(false);
-    }
-  };
-
-  const handleSimulate = async () => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
-    }
-    if (resultTimerRef.current) {
-      clearTimeout(resultTimerRef.current);
-      resultTimerRef.current = null;
-    }
-    setIsRacing(false);
-    setShowResults(false);
-    setSimProgress(0);
-    setLoading(true);
-
-    try {
-      const response = await fetch('https://keiba-api-hybt.onrender.com/simulate_race', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          race_id: raceId,
-          horses: horses,
-          course_type: courseType,
-          distance: distance,
-          weather: weather,
-          track_condition: trackCondition,
-          expected_pace: expectedPace,
-          track_bias: trackBias,
-          bias_strength: biasStrength,
-          cushion_value: cushionValue,
-        }),
-      });
-
-      if (!response.ok) throw new Error('API通信エラー');
-      const data = await response.json();
-      setResults(Array.isArray(data.ranking) ? data.ranking : []);
-      setSimRunId((prev) => prev + 1);
-      setIsRacing(true);
-    } catch (error) {
-      console.error(error);
-      alert('エラーが発生しました。');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getScenarioMatchLabel = (horse: DiagnosisResult) => {
-    const hInput = horses.find((h) => h.umaban === horse.umaban);
-    const kyaku = hInput ? Number(hInput.kyakushitsu) : 2;
-    if (
-      expectedPace === 'S_YOIDON' &&
-      (horse.pci_type === 'C' || horse.time_diff <= -0.2) &&
-      kyaku <= 3
-    )
-      return '🔥 直線キレ味合致';
-    if (
-      expectedPace === 'S_LONSPA' &&
-      horse.pci >= 49.5 &&
-      horse.pci <= 54.0 &&
-      (kyaku === 2 || kyaku === 3)
-    )
-      return '🔥 ロンスパ適性合致';
-    if (expectedPace === 'M_JIRIKI' && horse.pci_type === 'B' && (kyaku === 2 || kyaku === 3))
-      return '🔥 王道好位合致';
-    if (
-      expectedPace === 'M_LONSPA' &&
-      (horse.pci_type === 'B' || horse.pci_type === 'A') &&
-      (kyaku === 2 || kyaku === 3)
-    )
-      return '🔥 タフ持続戦合致';
-    if (expectedPace === 'H_MAEKUZURE' && (horse.pci_type === 'A' || kyaku >= 3))
-      return '🔥 消耗戦・差追合致';
-    return null;
-  };
-
-  const renderSingleBenchmarkCard = (bench: SingleBenchmark, isCurrentYear: boolean) => (
-    <div
-      className={`p-3 md:p-4 rounded-xl border ${
-        isCurrentYear
-          ? 'bg-amber-950/40 border-amber-500/80 shadow-md'
-          : 'bg-gray-900/90 border-cyan-700/60'
-      }`}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-800 pb-2 mb-2.5">
-        <div className="flex items-center gap-2">
-          <span
-            className={`text-[10px] md:text-xs font-black px-2.5 py-0.5 rounded-full ${
-              isCurrentYear ? 'bg-amber-400 text-gray-950' : 'bg-cyan-700 text-white'
-            }`}
-          >
-            {isCurrentYear ? '🏁 今年度・確定結果' : '⏱️ 前年・同条件基準'}
-          </span>
-          <span className="text-xs md:text-sm font-bold text-gray-200">{bench.label}</span>
-        </div>
-        <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-lg border border-gray-700">
-          <span className="text-xs text-gray-400 font-bold">1着ゴールタイム:</span>
-          <span className="text-base md:text-lg font-mono font-black text-yellow-400">
-            {bench.winner_time}
-          </span>
-          {bench.winner_bamei && (
-            <span className="text-[11px] text-gray-300 font-bold">
-              ({bench.winner_umaban > 0 ? `${bench.winner_umaban}番 ` : ''}
-              {bench.winner_bamei})
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-        {(bench.top3 || []).map((item) => (
-          <div
-            key={item.rank}
-            className="bg-gray-950/80 border border-gray-800 rounded-lg px-2.5 py-2 flex items-center justify-between gap-2"
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span
-                className={`font-black px-1.5 py-0.5 rounded text-[10px] ${
-                  item.rank === 1
-                    ? 'bg-yellow-500 text-gray-950'
-                    : item.rank === 2
-                      ? 'bg-gray-300 text-gray-950'
-                      : 'bg-amber-600 text-white'
-                }`}
-              >
-                {item.rank}着
-              </span>
-              {item.umaban > 0 && (
-                <span className="text-gray-300 font-mono font-bold text-[11px]">
-                  {item.umaban}番
-                </span>
-              )}
-              <span className="font-bold text-white truncate">{item.bamei}</span>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0 font-mono">
-              <span className="text-[11px] text-gray-400" title="走行順位(通過順)">
-                [{item.passing}]
-              </span>
-              <span className="bg-indigo-950/90 text-sky-300 border border-indigo-600/60 px-2 py-0.5 rounded font-extrabold text-xs">
-                上り {item.up}秒
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderPatternCard = (
-    pat: PatternTicketItem,
-    borderClass: string,
-    titleClass: string,
-    badgeBgClass: string
-  ) => (
-    <div
-      key={pat.id}
-      className={`bg-gray-950/90 border ${borderClass} rounded-lg p-3 flex flex-col justify-between`}
-    >
-      <div>
-        <div className="flex justify-between items-center gap-2 border-b border-gray-800 pb-1.5 mb-2">
-          <span className={`font-extrabold text-xs md:text-sm ${titleClass}`}>{pat.title}</span>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="text-[10px] bg-gray-800 text-yellow-300 border border-yellow-600/60 px-2 py-0.5 rounded font-mono font-bold">
-              合成 {pat.syntheticOdds}倍
-            </span>
-            <span className={`text-xs ${badgeBgClass} font-black px-2 py-0.5 rounded whitespace-nowrap`}>
-              計 {pat.count} 点
-            </span>
-          </div>
-        </div>
-        <div className="font-mono text-xs font-extrabold text-yellow-300 mb-1">
-          {pat.structureText}
-        </div>
-        <p className="text-[11px] text-gray-400 mb-2 leading-snug">{pat.subNote}</p>
-      </div>
-
-      <div className="bg-black/60 p-2 rounded border border-gray-800 max-h-36 overflow-y-auto">
-        <div className="flex justify-between items-center text-[10px] text-gray-400 border-b border-gray-800 pb-1 mb-1 font-bold">
-          <span>買い目 (推定オッズ / 妙味)</span>
-          <span>推奨配分 (想定払戻)</span>
-        </div>
-        <div className="space-y-1 font-mono text-[11px]">
-          {(pat.allocations || []).map((al, idx) => (
-            <div
-              key={idx}
-              className="flex justify-between items-center border-b border-gray-900/80 last:border-0 py-0.5"
-            >
-              <div className="flex items-center gap-1.5">
-                <span className="text-white font-bold">{al.combo}</span>
-                <span className="text-gray-400 text-[10px]">({al.estOdds}倍)</span>
-                {al.isValuePick && (
-                  <span className="bg-pink-900/80 text-pink-200 border border-pink-500/60 px-1 rounded text-[9px] font-bold">
-                    🔥妙味EV{al.ev}
-                  </span>
-                )}
-                {al.isTrigamiWarn && (
-                  <span className="bg-amber-950 text-amber-300 border border-amber-600/60 px-1 rounded text-[9px]">
-                    ⚠️安目
-                  </span>
-                )}
-              </div>
-              <div className="text-right">
-                <span className="text-emerald-300 font-extrabold">{al.stakeYen}円</span>
-                <span className="text-gray-400 text-[10px] ml-1">
-                  (➔{al.expectedReturnYen.toLocaleString()}円)
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const startGatePt = getHorseSimPosition(
-    0.0,
-    effectiveDir,
-    startConfig.resolvedMode,
-    startConfig.startLapPos,
-    startConfig.totalLaps,
-    10
-  );
-  const pocketMergePt = getTrackPointAndNormal(startConfig.startLapPos, effectiveDir, 10);
-  const goalGatePt = getTrackPointAndNormal(0.0, effectiveDir, 0);
-
-  const elevationSamples = 60;
-  const maxElev = Math.max(3.5, venueProfile.elevationDiff + 0.5);
-  const elevPoints: string[] = [];
-  for (let i = 0; i <= elevationSamples; i++) {
-    const ratio = i / elevationSamples;
-    const lapPos = (startConfig.startLapPos + ratio * startConfig.totalLaps) % 1;
-    const elev = venueProfile.getElevationAtLapPos(lapPos);
-    const px = 40 + ratio * 720;
-    const py = 74 - (elev / maxElev) * 48;
-    elevPoints.push(`${px.toFixed(1)},${py.toFixed(1)}`);
-  }
-  const elevPolygonPoints = `40,78 ${elevPoints.join(' ')} 760,78`;
-  const currentLeadLapPos = (startConfig.startLapPos + simProgress * startConfig.totalLaps) % 1;
-  const currentLeadElev = venueProfile.getElevationAtLapPos(currentLeadLapPos);
-  const currentElevX = 40 + simProgress * 720;
-  const currentElevY = 74 - (currentLeadElev / maxElev) * 48;
-
-  const currentScenario = PACE_SCENARIOS[expectedPace] || PACE_SCENARIOS.M_JIRIKI;
-
-  const displayedDiagnosis = Array.isArray(diagnosisResults)
-    ? [...diagnosisResults].sort((a, b) =>
-        activeStageView === 'STAGE1' ? b.stage1_shisu - a.stage1_shisu : b.shisu - a.shisu
-      )
-    : null;
-
-  const axisDefensePlan = buildAxisDefensePlan(
-    diagnosisResults,
-    bettingTickets,
-    budgetYen,
-    allocMode
-  );
-
-  const totalWin5Combos = win5Slots.reduce((acc, s) => {
-    const selLen = Array.isArray(s?.selectedUmabans) ? s!.selectedUmabans.length : 0;
-    return acc * (selLen > 0 ? selLen : 1);
-  }, 1);
-
-  return (
-    <main className="min-h-screen bg-gray-900 text-white p-4 md:p-6 font-sans pb-20">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-3 mb-5">
-          <h1 className="text-2xl md:text-3xl font-bold text-center md:text-left text-red-500">
-            PRO仕様 競馬本格シミュレーター
-          </h1>
-          <button
-            onClick={() => setShowWin5Panel((prev) => !prev)}
-            className={`px-4 py-2.5 rounded-xl font-extrabold text-xs md:text-sm border-2 transition shadow-lg flex items-center gap-2 ${
-              showWin5Panel
-                ? 'bg-amber-500 text-gray-950 border-yellow-300'
-                : 'bg-gradient-to-r from-amber-700 to-yellow-600 text-white border-amber-400 hover:brightness-110'
-            }`}
-          >
-            <span>🏆 WIN5 予想＆点数配分モード</span>
-            <span className="bg-black/40 text-yellow-200 px-2 py-0.5 rounded-full text-[11px]">
-              {win5Slots.filter(Boolean).length}/5登録済
-            </span>
-          </button>
-        </div>
-
-        {/* 📌 診断済みレース履歴バー（ワンタップ切替 ＆ 個別削除✕・全消去ボタン付き） */}
-        {savedRacesHistory.length > 0 && (
-          <div className="mb-5 bg-gray-800/90 border border-gray-700 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-sky-400 mr-1">
-                📌 診断済み履歴 (ワンタップ切替):
-              </span>
-              {savedRacesHistory.map((item) => {
-                const safeId = String(item?.raceId || '');
-                const rNum = safeId.length >= 2 ? safeId.slice(-2) : '11';
-                const isCurrent = safeId === raceId && Boolean(diagnosisResults);
-                return (
-                  <div
-                    key={safeId}
-                    onClick={() => handleLoadFromHistory(item)}
-                    className={`cursor-pointer pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 ${
-                      isCurrent
-                        ? 'bg-indigo-600 text-white border-indigo-400 shadow'
-                        : 'bg-gray-900 text-gray-300 border-gray-600 hover:bg-gray-700'
-                    }`}
-                  >
-                    <span>
-                      {item.targetPlace || '東京'}
-                      {parseInt(rNum, 10) || rNum}R
-                    </span>
-                    <span className="truncate max-w-[100px] text-[11px] text-yellow-300">
-                      {String(item.targetRaceName || '')
-                        .replace(/出馬表.*$/, '')
-                        .trim()}
-                    </span>
-                    <button
-                      onClick={(e) => handleDeleteHistoryItem(safeId, e)}
-                      title="この履歴を削除"
-                      className="ml-1 w-4 h-4 rounded-full bg-black/40 hover:bg-red-600 text-gray-300 hover:text-white flex items-center justify-center text-[10px] leading-none transition"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <button
-              onClick={handleClearAllHistory}
-              className="text-[11px] bg-red-950/80 hover:bg-red-800 text-red-200 border border-red-700/70 px-2.5 py-1 rounded-lg font-bold transition whitespace-nowrap"
-            >
-              🗑️ 履歴を全消去
-            </button>
-          </div>
-        )}
-
-        {/* 🏆 WIN5 予想＆点数配分シミュレーター パネル */}
-        {showWin5Panel && (
-          <div className="bg-gradient-to-b from-gray-800 via-gray-900 to-gray-950 p-4 md:p-6 rounded-2xl shadow-2xl border-2 border-amber-500/80 mb-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-gray-700 pb-3 mb-4">
-              <div>
-                <h2 className="text-lg md:text-2xl font-black text-amber-400 flex items-center gap-2">
-                  <span>🏆 WIN5 AIフォーメーション ＆ 予算別点数最適化ボード</span>
-                </h2>
-                <p className="text-xs text-gray-300 mt-0.5">
-                  5つのレースIDを入力して連続解析するか、各レース診断後の「WIN5登録ボタン」で1レースずつセットできます。
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {win5Slots.some(Boolean) && (
-                  <button
-                    onClick={handleClearAllWin5Slots}
-                    className="text-xs bg-red-950/80 hover:bg-red-800 text-red-200 px-3 py-1.5 rounded-lg border border-red-700 font-bold transition"
-                  >
-                    🗑️ WIN5登録を全クリア
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowWin5Panel(false)}
-                  className="text-xs text-gray-400 hover:text-white bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-600"
-                >
-                  閉じる ▲
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-gray-950/90 p-3.5 rounded-xl border border-gray-700 mb-4">
-              <div className="text-xs font-bold text-amber-300 mb-2">
-                🌐 方法A：5つのレースID（12桁）から順番に一括自動解析（タイムアウト防止・直列取得）
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
-                {[0, 1, 2, 3, 4].map((idx) => (
-                  <div key={idx}>
-                    <label className="text-[10px] text-gray-400 block mb-1 font-bold">
-                      WIN5 第{idx + 1}戦 ID
-                    </label>
-                    <input
-                      type="text"
-                      value={win5InputIds[idx] || ''}
-                      onChange={(e) => {
-                        const next = [...win5InputIds];
-                        next[idx] = e.target.value;
-                        setWin5InputIds(next);
-                      }}
-                      placeholder="例: 202608040410"
-                      className="w-full bg-gray-900 text-white font-mono text-xs p-2 rounded border border-gray-600 focus:outline-none focus:border-amber-400"
-                    />
-                  </div>
-                ))}
-                <button
-                  onClick={handleBatchFetchWin5}
-                  disabled={win5BatchLoading}
-                  className="col-span-2 md:col-span-1 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black py-2 px-3 rounded-lg text-xs shadow-md transition disabled:opacity-50"
-                >
-                  {win5BatchLoading ? '順次解析中...' : '🚀 5レース連続解析'}
-                </button>
-              </div>
-              {win5BatchProgressText && (
-                <div className="mt-2.5 text-xs font-bold text-sky-300 bg-sky-950/60 border border-sky-600/60 px-3 py-1.5 rounded-lg">
-                  {win5BatchProgressText}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-900 p-3 rounded-xl border border-amber-600/40 mb-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-extrabold text-amber-300">
-                  🎯 目標点数（AI自動メリハリ配分）:
-                </span>
-                {[12, 24, 36, 48, 72, 96].map((pts) => (
-                  <button
-                    key={pts}
-                    onClick={() => handleApplyWin5TargetPoints(pts)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-black border transition ${
-                      win5TargetPoints === pts
-                        ? 'bg-amber-400 text-gray-950 border-white shadow'
-                        : 'bg-gray-800 text-gray-300 border-gray-600 hover:bg-gray-700'
-                    }`}
-                  >
-                    上限{pts}点 ({(pts * 100).toLocaleString()}円)
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-3 bg-black/60 px-3.5 py-1.5 rounded-lg border border-amber-500/70">
-                <span className="text-xs text-gray-300 font-bold">現在の選択点数:</span>
-                <span className="text-base md:text-lg font-mono font-black text-yellow-400">
-                  {totalWin5Combos} 点 ({(totalWin5Combos * 100).toLocaleString()}円)
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
-              {[0, 1, 2, 3, 4].map((idx) => {
-                const slot = win5Slots[idx];
-                const cands = Array.isArray(slot?.win5Profile?.candidates)
-                  ? slot!.win5Profile.candidates
-                  : [];
-                const selList = Array.isArray(slot?.selectedUmabans)
-                  ? slot!.selectedUmabans
-                  : [];
-                return (
-                  <div
-                    key={idx}
-                    className="bg-gray-900 border border-gray-700 rounded-xl p-3 flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex justify-between items-center border-b border-gray-800 pb-1.5 mb-2">
-                        <span className="text-xs font-black text-amber-400">
-                          WIN5 第{idx + 1}戦
-                        </span>
-                        {slot && (
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] bg-gray-800 text-white px-2 py-0.5 rounded font-bold">
-                              選択 {selList.length}頭
-                            </span>
-                            <button
-                              onClick={() => handleClearWin5Slot(idx)}
-                              title="このスロットをクリア"
-                              className="w-4 h-4 rounded-full bg-gray-800 hover:bg-red-600 text-gray-400 hover:text-white flex items-center justify-center text-[10px]"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {!slot ? (
-                        <div className="py-8 text-center text-xs text-gray-500">
-                          未登録
-                          <span className="block text-[10px] mt-1">
-                            （上の連続解析、または個別診断後に登録）
-                          </span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="mb-2">
-                            <div className="text-xs font-extrabold text-white truncate">
-                              {slot.placeName}
-                              {slot.raceNumLabel}{' '}
-                              {String(slot.raceName || '')
-                                .replace(/出馬表.*$/, '')
-                                .trim()}
-                            </div>
-                            <div className="text-[10px] text-gray-400">
-                              {slot.courseType}
-                              {slot.distance}m ／ 1-2位差 +{slot.win5Profile.shisu_gap}pt
-                            </div>
-                            <span
-                              className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-black border ${
-                                slot.win5Profile.difficulty === 'BANKER'
-                                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500'
-                                  : slot.win5Profile.difficulty === 'CHAOS'
-                                    ? 'bg-red-950 text-red-200 border-red-500'
-                                    : 'bg-blue-950 text-blue-200 border-blue-500'
-                              }`}
-                            >
-                              {slot.win5Profile.badge_label}
-                            </span>
-                          </div>
-
-                          <div className="space-y-1.5 mt-2">
-                            {cands.map((cand) => {
-                              const isSel = selList.includes(cand.umaban);
-                              return (
-                                <button
-                                  key={cand.umaban}
-                                  onClick={() => handleToggleWin5Horse(idx, cand.umaban)}
-                                  className={`w-full text-left p-1.5 rounded-lg border text-xs transition flex flex-col gap-0.5 ${
-                                    isSel
-                                      ? 'bg-amber-950/70 border-amber-400 text-white shadow'
-                                      : 'bg-gray-950/60 border-gray-800 text-gray-400 opacity-65 hover:opacity-100'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between gap-1">
-                                    <div className="flex items-center gap-1 min-w-0">
-                                      <span
-                                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${getHorseColor(cand.umaban)}`}
-                                      >
-                                        {cand.umaban}
-                                      </span>
-                                      <span className="font-bold truncate">{cand.bamei}</span>
-                                    </div>
-                                    <span className="font-mono text-[10px] text-yellow-300 flex-shrink-0">
-                                      {cand.shisu}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-[9px] text-gray-300 pl-5">
-                                    <span>
-                                      地力{cand.stage1_rank}位 / {cand.odds}倍
-                                    </span>
-                                    {isSel && (
-                                      <span className="text-amber-300 font-black">✔ 選択中</span>
-                                    )}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {win5Slots.some(Boolean) && (
-              <div className="bg-gray-950 border border-amber-500/50 rounded-xl p-3.5 flex flex-col md:flex-row gap-3 items-stretch">
-                <textarea
-                  value={win5PostText}
-                  onChange={(e) => setWin5PostText(e.target.value)}
-                  rows={7}
-                  className="flex-grow bg-gray-900 text-gray-100 font-mono text-xs p-2.5 rounded-lg border border-gray-700 focus:outline-none"
-                />
-                <div className="flex flex-col justify-between gap-2 md:w-52">
-                  <button
-                    onClick={handleShareWin5ToX}
-                    className="w-full flex-grow bg-black hover:bg-gray-900 text-white font-extrabold py-2.5 px-4 rounded-lg border-2 border-amber-400 shadow flex items-center justify-center gap-2 text-xs transition"
-                  >
-                    <span className="text-base">𝕏</span> WIN5予想をポスト
-                  </button>
-                  <button
-                    onClick={handleCopyWin5Post}
-                    className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-3 rounded-lg text-xs transition"
-                  >
-                    {win5CopiedFlag ? '✅ コピー完了！' : '📋 WIN5文面をコピー'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* STEP 1 */}
-        <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
-          <div className="flex-grow w-full">
-            <label className="text-sm text-gray-400 block mb-2 font-bold">
-              STEP 1: 🌐 レースIDから出馬表・過去5走履歴・前年/今年度タイム・芝/ダート雨適性を全自動取得
-            </label>
-            <input
-              type="text"
-              value={raceId}
-              onChange={(e) => setRaceId(e.target.value)}
-              className="w-full bg-gray-900 text-white rounded-lg p-3 md:p-4 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600 font-mono text-lg"
-              placeholder="例: 202605041111"
-            />
-          </div>
-          <button
-            onClick={handleFetchRace}
-            disabled={fetching}
-            className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 md:py-4 px-8 rounded-lg shadow-lg transition whitespace-nowrap disabled:opacity-50"
-          >
-            {fetching ? '5走柱＆コース解析中...' : '出馬表を取り込む ↓'}
-          </button>
-        </div>
-
-        {/* STEP 2 */}
-        <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6">
-          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-300">
-            STEP 2: コース形状・前年/今年度タイム基準 ＆ 追切時計・2段階全頭診断
-          </h2>
-
-          {targetRaceName && (
-            <div className="mb-4 p-4 md:p-5 bg-gray-900 border border-yellow-600/50 rounded-lg shadow-inner flex flex-col gap-3">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                <div className="flex flex-col">
-                  <span className="text-yellow-500 font-bold text-xs mb-1 tracking-wider">
-                    TARGET RACE & COURSE PROFILE
-                  </span>
-                  <h3 className="text-xl md:text-2xl font-extrabold text-white leading-tight">
-                    {targetRaceName}
-                  </h3>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="inline-block bg-green-800 text-green-100 font-bold px-3 py-1.5 rounded-full text-xs border border-green-600 shadow-sm whitespace-nowrap">
-                    📍 {activeVenueKey}競馬場 / {courseType}
-                    {distance}m ({effectiveDir === 'LEFT' ? '左回り↺' : '右回り↻'})
-                  </span>
-                  <span className="inline-block bg-sky-900/80 text-sky-200 font-bold px-3 py-1.5 rounded-full text-xs border border-sky-600 shadow-sm whitespace-nowrap">
-                    🚪 {startConfig.startLabel}
-                  </span>
-                  <span className="inline-block bg-amber-900/70 text-amber-200 font-bold px-3 py-1.5 rounded-full text-xs border border-amber-600 shadow-sm whitespace-nowrap">
-                    ⛰️ 高低差 {venueProfile.elevationDiff}m / 直線 {venueProfile.straightMeter}m
-                  </span>
-                  {courseRpci !== null && (
-                    <span
-                      className={`inline-block font-bold px-3 py-1.5 rounded-full text-xs border shadow-sm whitespace-nowrap ${getPciBadgeStyle(courseRpciType)}`}
-                    >
-                      ⏱️ 舞台RPCI: {courseRpci} (傾向{courseRpciType})
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="text-xs text-gray-300 bg-gray-950/80 px-3 py-2 rounded-lg border border-gray-800">
-                <span className="text-amber-400 font-bold mr-2">
-                  【コース起伏特徴：{venueProfile.slopeTitle}】
-                </span>
-                {venueProfile.featureText}
-                {courseRailMessage && (
-                  <span className="block mt-1 text-emerald-300 font-bold">{courseRailMessage}</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {referenceBenchmarks && (
-            <div className="mb-5 space-y-3">
-              {referenceBenchmarks.current_year &&
-                renderSingleBenchmarkCard(referenceBenchmarks.current_year, true)}
-              {referenceBenchmarks.prev_year &&
-                renderSingleBenchmarkCard(referenceBenchmarks.prev_year, false)}
-            </div>
-          )}
-
-          {autoStatus && (
-            <div className="mb-6 grid grid-cols-1 gap-2 bg-gray-950 p-3.5 rounded-xl border border-gray-700 text-xs">
-              {autoStatus.odds_message && (
-                <div
-                  className={`p-2.5 rounded-lg border font-bold ${
-                    autoStatus.odds_status === 'manual_required'
-                      ? 'bg-amber-950/70 border-amber-500/80 text-amber-200'
-                      : 'bg-yellow-950/60 border-yellow-600/70 text-yellow-200'
-                  }`}
-                >
-                  {autoStatus.odds_message}
-                </div>
-              )}
-              <div
-                className={`p-2.5 rounded-lg border font-bold ${
-                  autoStatus.bias_status === 'auto_detected'
-                    ? 'bg-emerald-950/60 border-emerald-600/60 text-emerald-200'
-                    : 'bg-amber-950/70 border-amber-500/80 text-amber-200'
-                }`}
-              >
-                {autoStatus.bias_message}
-              </div>
-              <div className="p-2.5 rounded-lg border bg-blue-950/50 border-blue-700/60 text-blue-200 font-bold">
-                {autoStatus.pace_message}
-              </div>
-              <div
-                className={`p-2.5 rounded-lg border font-bold ${
-                  autoStatus.weight_status === 'auto_detected'
-                    ? 'bg-purple-950/50 border-purple-700/60 text-purple-200'
-                    : 'bg-gray-900 border-gray-600 text-gray-300'
-                }`}
-              >
-                {autoStatus.weight_message}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 mb-4">
-            <div>
-              <label className="text-[10px] md:text-xs text-gray-400 block mb-1">
-                競馬場 (主要5場)
-              </label>
-              <select
-                value={activeVenueKey}
-                onChange={(e) => setTargetPlace(e.target.value)}
-                className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base"
-              >
-                {Object.keys(VENUE_PROFILES).map((v) => (
-                  <option key={v} value={v}>
-                    {v} ({VENUE_PROFILES[v].dir === 'LEFT' ? '左回り' : '右回り'})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] md:text-xs text-gray-400 block mb-1">コース</label>
-              <select
-                value={courseType}
-                onChange={(e) => setCourseType(e.target.value)}
-                className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base"
-              >
-                <option value="芝">芝</option>
-                <option value="ダ">ダート</option>
-                <option value="障">障害</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] md:text-xs text-gray-400 block mb-1">距離 (m)</label>
-              <input
-                type="number"
-                step="100"
-                value={distance}
-                onChange={(e) => setDistance(Number(e.target.value))}
-                className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] md:text-xs text-gray-400 block mb-1">天候</label>
-              <select
-                value={weather}
-                onChange={(e) => setWeather(e.target.value)}
-                className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base"
-              >
-                <option value="晴">晴</option>
-                <option value="曇">曇</option>
-                <option value="雨">雨</option>
-                <option value="小雨">小雨</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] md:text-xs text-gray-400 block mb-1">馬場状態</label>
-              <select
-                value={trackCondition}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setTrackCondition(val);
-                  if (courseType === '芝' && ['稍', '重', '不'].includes(val) && cushionValue >= 9.2) {
-                    setCushionValue(8.6);
-                  }
-                }}
-                className="w-full bg-gray-900 text-white rounded p-2 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-green-500 text-sm md:text-base"
-              >
-                <option value="良">良</option>
-                <option value="稍">稍重</option>
-                <option value="重">重</option>
-                <option value="不">不良</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] md:text-xs text-emerald-400 font-bold block mb-1">
-                クッション値
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                value={cushionValue}
-                onChange={(e) => setCushionValue(Number(e.target.value))}
-                className="w-full bg-emerald-950 text-white font-bold rounded p-2 border border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm md:text-base"
-                placeholder="例: 9.5"
-              />
-            </div>
-          </div>
-
-          <div className="bg-gray-900 p-3 md:p-5 rounded-xl border border-gray-700 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4">
-              <div>
-                <label className="text-xs md:text-sm text-blue-400 font-bold block mb-1">
-                  予想ペース・詳細展開シナリオ (自動判定・手動変更可)
-                </label>
-                <select
-                  value={expectedPace}
-                  onChange={(e) => setExpectedPace(e.target.value)}
-                  className="w-full bg-blue-950 text-white font-bold rounded p-2.5 border border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 text-xs md:text-sm"
-                >
-                  <optgroup label="▼ スローペース (道中遅い・瞬発力/持続力)">
-                    <option value="S_YOIDON">
-                      スロー ① 直線ヨーイドン (残り400mキレ味勝負)
-                    </option>
-                    <option value="S_LONSPA">
-                      スロー ② ロンスパ・マクリ (向正面〜3角早め仕掛け)
-                    </option>
-                  </optgroup>
-                  <optgroup label="▼ ミドルペース (平均的・実力/持続戦)">
-                    <option value="M_JIRIKI">
-                      ミドル ① 地力・総合力勝負 (好位抜け出し王道戦)
-                    </option>
-                    <option value="M_LONSPA">ミドル ② ロンスパ戦 (タフな消耗持続戦)</option>
-                  </optgroup>
-                  <optgroup label="▼ ハイペース (道中速い・消耗戦)">
-                    <option value="H_MAEKUZURE">
-                      ハイペース ① 前崩れのバテ合い消耗戦 (後方追込台頭)
-                    </option>
-                  </optgroup>
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <div className="flex-grow">
-                  <label className="text-xs md:text-sm text-pink-400 font-bold block mb-1">
-                    トラックバイアス (自動判定・手動変更可)
-                  </label>
-                  <select
-                    value={trackBias}
-                    onChange={(e) => setTrackBias(e.target.value)}
-                    className="w-full bg-pink-950 text-white font-bold rounded p-2.5 border border-pink-600 focus:outline-none focus:ring-2 focus:ring-pink-500 text-xs md:text-sm"
-                  >
-                    <option value="フラット">フラット (標準)</option>
-                    <option value="イン前有利 (1〜4枠・先行)">イン前有利 (1〜4枠・先行好位)</option>
-                    <option value="外差し有利 (5〜8枠・差し追込)">外差し有利 (5〜8枠・差し追込)</option>
-                    <option value="前残り (逃げ・先行有利)">前残り (逃げ・先行有利)</option>
-                    <option value="差し有利 (外伸び)">差し有利 (外伸び)</option>
-                    <option value="内枠有利 (インベタ)">内枠有利 (1〜4枠)</option>
-                    <option value="外枠有利">外枠有利 (5〜8枠)</option>
-                  </select>
-                </div>
-                <div className="w-24">
-                  <label className="text-xs md:text-sm text-pink-300 font-bold block mb-1">
-                    強度
-                  </label>
-                  <select
-                    value={biasStrength}
-                    onChange={(e) => setBiasStrength(e.target.value)}
-                    disabled={trackBias === 'フラット'}
-                    className="w-full bg-pink-900/50 text-white font-bold rounded p-2.5 border border-pink-700 focus:outline-none focus:ring-2 focus:ring-pink-500 text-xs md:text-sm disabled:opacity-50"
-                  >
-                    <option value="弱">レベル1 (弱)</option>
-                    <option value="中">レベル2 (中)</option>
-                    <option value="極端">レベル3 (極端)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-950/90 border border-gray-800 rounded-xl p-3 md:p-4">
-              <div className="flex flex-wrap items-center gap-2 border-b border-gray-800 pb-2.5 mb-3">
-                <span className="bg-blue-900/80 text-blue-200 border border-blue-600/60 text-[10px] md:text-xs font-bold px-2.5 py-0.5 rounded-full">
-                  {currentScenario.category}
-                </span>
-                <span className="text-sm md:text-base font-extrabold text-white">
-                  {currentScenario.headline}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 text-xs">
-                <div className="bg-gray-900/90 p-2.5 md:p-3 rounded-lg border border-gray-800/80">
-                  <div className="text-[10px] text-gray-400 font-bold mb-1">発生しやすい展開</div>
-                  <div className="text-gray-100 font-bold leading-snug">{currentScenario.flow}</div>
-                </div>
-                <div className="bg-gray-900/90 p-2.5 md:p-3 rounded-lg border border-gray-800/80">
-                  <div className="text-[10px] text-gray-400 font-bold mb-1">
-                    最も有利な脚質・適性
-                  </div>
-                  <div className="text-sky-400 font-bold leading-snug">
-                    {currentScenario.advantage}
-                  </div>
-                </div>
-                <div className="bg-gray-900/90 p-2.5 md:p-3 rounded-lg border border-gray-800/80">
-                  <div className="text-[10px] text-gray-400 font-bold mb-1">レース展開の特徴</div>
-                  <div className="text-gray-300 text-[11px] leading-relaxed">
-                    {currentScenario.feature}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:gap-4">
-            {horses.map((horse, index) => (
-              <div
-                key={index}
-                className="bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700 flex flex-col gap-2"
-              >
-                <div className="flex gap-2 md:gap-3 items-center flex-wrap md:flex-nowrap">
-                  <div
-                    className={`w-7 h-7 md:w-8 md:h-8 flex items-center justify-center font-bold text-sm md:text-base rounded-full shadow-md flex-shrink-0 ${getHorseColor(horse.wakuban || horse.umaban)}`}
-                    title={`枠番: ${horse.wakuban} / 馬番: ${horse.umaban}`}
-                  >
-                    {horse.umaban}
-                  </div>
-                  <div className="flex-grow flex flex-col gap-1.5 w-full">
-                    <div className="flex flex-wrap gap-1.5 items-center">
-                      <input
-                        type="text"
-                        value={horse.bamei}
-                        onChange={(e) => handleChange(index, 'bamei', e.target.value)}
-                        placeholder="馬名"
-                        className="w-[38%] md:w-32 bg-gray-700 text-white font-bold rounded p-1.5 text-xs md:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                      <input
-                        type="text"
-                        value={horse.kishu}
-                        onChange={(e) => handleChange(index, 'kishu', e.target.value)}
-                        placeholder="騎手"
-                        className="w-[24%] md:w-20 bg-gray-700 text-blue-200 font-bold rounded p-1.5 text-xs md:text-sm border border-blue-800/50 focus:outline-none"
-                      />
-                      <div className="w-[24%] md:w-20 relative">
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={horse.odds || ''}
-                          onChange={(e) => handleChange(index, 'odds', e.target.value)}
-                          placeholder="オッズ"
-                          className="w-full bg-gray-700 text-yellow-300 font-bold rounded p-1.5 pr-4 text-xs md:text-sm border border-yellow-800/50 text-right focus:outline-none"
-                        />
-                        <span className="absolute right-1 top-1.5 text-[9px] md:text-[10px] text-yellow-500">
-                          倍
-                        </span>
-                      </div>
-                      <select
-                        value={horse.kyakushitsu}
-                        onChange={(e) => handleChange(index, 'kyakushitsu', e.target.value)}
-                        className="w-[22%] md:w-16 bg-purple-900 text-purple-200 text-[10px] md:text-xs font-bold rounded p-1.5 border border-purple-700 focus:outline-none"
-                      >
-                        <option value="1">逃げ</option>
-                        <option value="2">先行</option>
-                        <option value="3">差し</option>
-                        <option value="4">追込</option>
-                      </select>
-
-                      <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-600">
-                        <span className="text-[9px] text-gray-400">馬体重</span>
-                        <input
-                          type="number"
-                          value={horse.bataijuu}
-                          onChange={(e) => handleChange(index, 'bataijuu', e.target.value)}
-                          className="w-10 bg-transparent text-white font-bold text-xs text-right focus:outline-none"
-                        />
-                        <span className="text-[10px] text-gray-500">(</span>
-                        <input
-                          type="number"
-                          value={horse.weight_change}
-                          onChange={(e) => handleChange(index, 'weight_change', e.target.value)}
-                          className={`w-7 bg-transparent font-bold text-xs text-center focus:outline-none ${horse.weight_change > 0 ? 'text-red-400' : horse.weight_change < 0 ? 'text-blue-400' : 'text-gray-300'}`}
-                        />
-                        <span className="text-[10px] text-gray-500">)</span>
-                      </div>
-
-                      <div
-                        className="flex items-center gap-1 bg-gray-950 rounded px-1.5 py-1 border border-amber-700/60"
-                        title="追切の4F時計(例:51.2)と1F時計(例:11.3)を入力すると自動でS/A/B/Cランクを判定します"
-                      >
-                        <span className="text-[9px] text-amber-400 font-bold">追切時計</span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={horse.training_4f || ''}
-                          onChange={(e) => handleChange(index, 'training_4f', e.target.value)}
-                          placeholder="4F"
-                          className="w-10 bg-gray-800 text-amber-200 font-mono text-[11px] text-center rounded px-1 py-0.5 focus:outline-none"
-                        />
-                        <span className="text-[9px] text-gray-500">-</span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={horse.training_1f || ''}
-                          onChange={(e) => handleChange(index, 'training_1f', e.target.value)}
-                          placeholder="1F"
-                          className="w-10 bg-gray-800 text-amber-200 font-mono text-[11px] text-center rounded px-1 py-0.5 focus:outline-none"
-                        />
-                      </div>
-
-                      <select
-                        value={horse.training_rank || 'B'}
-                        onChange={(e) => handleChange(index, 'training_rank', e.target.value)}
-                        className={`w-[34%] md:w-28 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${
-                          horse.training_rank === 'S'
-                            ? 'bg-amber-900/70 text-yellow-300 border-yellow-500'
-                            : horse.training_rank === 'A'
-                              ? 'bg-emerald-900/60 text-emerald-200 border-emerald-500'
-                              : horse.training_rank === 'C'
-                                ? 'bg-red-950 text-red-300 border-red-600'
-                                : 'bg-gray-800 text-gray-300 border-gray-600'
-                        }`}
-                      >
-                        <option value="S">🔥 追切S:抜群 (1.05倍)</option>
-                        <option value="A">✨ 追切A:好調 (1.03倍)</option>
-                        <option value="B">ー 追切B:標準 (1.00倍)</option>
-                        <option value="C">⚠️ 追切C:割引 (0.92倍)</option>
-                      </select>
-
-                      <select
-                        value={horse.condition_override}
-                        onChange={(e) => handleChange(index, 'condition_override', e.target.value)}
-                        className={`w-[36%] md:w-28 text-[10px] md:text-xs font-bold rounded p-1.5 border focus:outline-none ${horse.condition_override === '1.00' ? 'bg-gray-800 text-gray-400 border-gray-700' : Number(horse.condition_override) > 1.0 ? 'bg-green-900/50 text-green-300 border-green-600' : 'bg-red-900/50 text-red-300 border-red-600'}`}
-                      >
-                        <option value="1.04">↑ 好仕上 (1.04倍)</option>
-                        <option value="1.03">↑ 充実/絞込 (1.03倍)</option>
-                        <option value="1.02">↑ 成長分 (1.02倍)</option>
-                        <option value="1.00">- 馬体標準 (1.00倍)</option>
-                        <option value="0.97">↓ 微減点 (0.97倍)</option>
-                        <option value="0.95">↓ 太め注意 (0.95倍)</option>
-                        <option value="0.94">↓ 細化注意 (0.94倍)</option>
-                        <option value="0.88">↓ 極端減点 (0.88倍)</option>
-                      </select>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 pl-1">
-                      {horse.condition_reason && (
-                        <div className="text-[10px] text-gray-400">
-                          💡 自動解析:{' '}
-                          <span
-                            className={`font-bold ${
-                              horse.condition_reason.includes('🚨')
-                                ? 'text-red-300'
-                                : horse.condition_reason.includes('⚠️')
-                                  ? 'text-amber-300'
-                                  : 'text-gray-200'
-                            }`}
-                          >
-                            {horse.condition_reason}
-                          </span>
-                        </div>
-                      )}
-
-                      {horse.history_details && horse.history_details.length > 0 && (
-                        <details className="w-full mt-1">
-                          <summary className="text-[10px] text-sky-400 hover:text-sky-300 cursor-pointer font-bold select-none">
-                            📋 過去5走履歴（レース名・距離・着順・タイム・上り3F・走行順位）を表示
-                          </summary>
-                          <div className="mt-1.5 overflow-x-auto bg-gray-950/90 p-2 rounded border border-gray-800">
-                            <table className="w-full text-[10px] md:text-[11px] text-left border-collapse min-w-[420px]">
-                              <thead>
-                                <tr className="border-b border-gray-800 text-gray-400">
-                                  <th className="py-1 pr-2">レース名</th>
-                                  <th className="py-1 pr-2">距離・馬場</th>
-                                  <th className="py-1 pr-2 text-center">着順</th>
-                                  <th className="py-1 pr-2 font-mono">タイム</th>
-                                  <th className="py-1 pr-2 font-mono">上り3F</th>
-                                  <th className="py-1 pr-2 font-mono">走行順位</th>
-                                  <th className="py-1 font-mono text-right">PCI</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {horse.history_details.map((h, i) => (
-                                  <tr
-                                    key={i}
-                                    className="border-b border-gray-800/50 last:border-0 text-gray-200"
-                                  >
-                                    <td className="py-1 pr-2 font-bold truncate max-w-[140px]">
-                                      {h.race_name}
-                                    </td>
-                                    <td className="py-1 pr-2 text-gray-300 whitespace-nowrap">
-                                      {h.distance || '-'}
-                                    </td>
-                                    <td
-                                      className={`py-1 pr-2 text-center whitespace-nowrap ${getRankTextStyle(h.rank)}`}
-                                    >
-                                      {h.rank}
-                                    </td>
-                                    <td className="py-1 pr-2 font-mono whitespace-nowrap">
-                                      {h.time}
-                                    </td>
-                                    <td className="py-1 pr-2 font-mono text-sky-300 font-bold whitespace-nowrap">
-                                      {h.up}
-                                    </td>
-                                    <td className="py-1 pr-2 font-mono text-gray-300 whitespace-nowrap">
-                                      {h.passing}
-                                    </td>
-                                    <td className="py-1 font-mono text-right text-gray-400 whitespace-nowrap">
-                                      {h.pci || '-'}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6">
-            <button
-              onClick={() => runDiagnosisWithMode('STAGE1')}
-              disabled={isDiagnosing || horses.length < 2}
-              className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 md:py-4 px-4 rounded-lg shadow-lg border border-slate-500 text-xs md:text-sm transition duration-200 disabled:opacity-50"
-            >`page.tsx` の**後半（Part 2/2）**です。先ほど貼り付けた前半（Part 1/2）の一番下の行のすぐ続きに、以下のコードを貼り付けて保存・デプロイしてください。
-
-（※診断済み履歴の「個別削除（✕）」「全履歴クリア」ボタン、およびWIN5ボードの「個別クリア（✕）」「WIN5全クリア」ボタン、`.slice()` エラー防止ガードをすべて組み込んでいます。）
-
-```tsx
-// ====== ここから Part 2/2（Part 1/2 のすぐ下に貼り付けてください） ======
-// ====== ▼ ここから上書き（function buildHorseMarksAndPostText から） ▼ ======
 
 function buildHorseMarksAndPostText(
   diagnosis: DiagnosisResult[] | null,
@@ -4347,7 +1934,6 @@ export default function Home() {
     });
   };
 
-  // ★履歴の個別削除関数
   const handleDeleteHistoryItem = (targetRaceId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setSavedRacesHistory((prev) => {
@@ -4361,7 +1947,6 @@ export default function Home() {
     });
   };
 
-  // ★履歴の一括全削除関数
   const handleClearAllHistory = () => {
     setSavedRacesHistory([]);
     try {
@@ -4371,7 +1956,6 @@ export default function Home() {
     }
   };
 
-  // ★WIN5スロットの個別クリア＆一括クリア関数
   const handleClearSingleWin5Slot = (slotIdx: number) => {
     setWin5Slots((prev) => prev.map((s, idx) => (idx === slotIdx ? null : s)));
   };
@@ -4953,7 +2537,7 @@ export default function Home() {
         setAutoStatus(data.auto_status || null);
 
         alert(
-          `${mappedHorses.length}頭の出馬表・過去5走履歴・前年/今年度タイム・包まれリスク印を取得しました！\n\n` +
+          `${mappedHorses.length}頭の出馬表・過去5走履歴・距離/回り/起伏/巻き返し印を取得しました！\n\n` +
             `${data.auto_status?.odds_message || ''}\n\n` +
             `${data.auto_status?.pace_message || ''}\n\n` +
             `${data.auto_status?.bias_message || ''}\n\n` +
@@ -5655,7 +3239,7 @@ export default function Home() {
         <div className="bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg border border-gray-700 mb-6 flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-grow w-full">
             <label className="text-sm text-gray-400 block mb-2 font-bold">
-              STEP 1: 🌐 レースIDから出馬表・過去5走履歴・前年/今年度タイム・芝/ダート雨適性を全自動取得
+              STEP 1: 🌐 レースIDから出馬表・過去5走履歴・距離/回り/起伏/前走巻き返し印を全自動取得
             </label>
             <input
               type="text"
@@ -5933,21 +3517,6 @@ export default function Home() {
                   {currentScenario.headline}
                 </span>
               </div>
-// ====== ▲ ここまで上書き（このすぐ下に先ほどの <div className="grid grid-cols-1 md:grid-cols-3 ... が続きます） ▲ ======
-                <div className="bg-gray-900/90 p-2.5 md:p-3 rounded-lg border border-gray-800/80">
-                  <div className="text-[10px] text-gray-400 font-bold mb-1">発生しやすい展開</div>
-                  <div className="text-gray-100 font-bold leading-snug">{currentScenario.flow}</div>
-                </div>
-                <div className="bg-gray-900/90 p-2.5 md:p-3 rounded-lg border border-gray-800/80">
-                  <div className="text-[10px] text-gray-400 font-bold mb-1">
-                    最も有利な脚質・適性
-                  </div>
-                  <div className="text-sky-400 font-bold leading-snug">
-                    {currentScenario.advantage}
-                  </div>
-                </div>
-                <div className="bg-gray-900/90 p-2.5 md:p-3 rounded-lg border border-gray-8
-{/* ▼ ここから貼り付け（展開シナリオの3カラム説明ボックス〜ファイル末尾まで） ▼ */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 text-xs">
                 <div className="bg-gray-900/90 p-2.5 md:p-3 rounded-lg border border-gray-800/80">
                   <div className="text-[10px] text-gray-400 font-bold mb-1">発生しやすい展開</div>
@@ -5972,7 +3541,7 @@ export default function Home() {
           </div>
 
           <div className="grid gap-3 md:gap-4">
-            {horses.map((horse, index) => (
+            {(horses || []).map((horse, index) => (
               <div
                 key={index}
                 className="bg-gray-900 p-3 md:p-4 rounded-lg border border-gray-700 flex flex-col gap-2"
@@ -6197,7 +3766,7 @@ export default function Home() {
             >
               {isDiagnosing
                 ? '分析中...'
-                : '📊 第2段階：包まれ・前残り・道悪・追切を加味して最終診断 ＆ 資金配分出力！'}
+                : '📊 第2段階：距離/回り/起伏/巻き返し/道悪を加味して最終診断 ＆ 資金配分出力！'}
             </button>
           </div>
         </div>
@@ -6228,7 +3797,7 @@ export default function Home() {
                       : 'text-gray-400 hover:text-white'
                   }`}
                 >
-                  ② 展開・包まれ・道悪加味順 (Stage 2)
+                  ② 展開・適性・道悪加味順 (Stage 2)
                 </button>
               </div>
             </div>
@@ -6344,13 +3913,13 @@ export default function Home() {
                           </span>
                         </div>
                       )}
-                      {marksSummary.renshita.length > 0 && (
+                      {(marksSummary.renshita || []).length > 0 && (
                         <div className="col-span-2 md:col-span-1 bg-gray-800/80 border border-gray-600 rounded-lg p-2.5">
                           <span className="inline-block bg-gray-600 text-white font-bold px-1.5 py-0.5 rounded text-xs mr-1.5">
                             △ 連下
                           </span>
                           <span className="font-bold text-gray-200">
-                            {marksSummary.renshita.map((r) => `${r.umaban}番`).join(', ')}
+                            {(marksSummary.renshita || []).map((r) => `${r.umaban}番`).join(', ')}
                           </span>
                         </div>
                       )}
@@ -6416,7 +3985,7 @@ export default function Home() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6 text-xs">
                   <div className="bg-yellow-950/40 border border-yellow-600/60 rounded-lg p-3">
                     <div className="text-yellow-400 font-bold mb-1.5">👑 1列目（1着軸本命）</div>
-                    {bettingTickets.formation_groups.axis_1st.map((h) => (
+                    {(bettingTickets.formation_groups?.axis_1st || []).map((h) => (
                       <div key={h.umaban} className="font-bold text-white text-sm">
                         {h.umaban}番 {h.bamei}
                         <span className="block text-[10px] text-gray-300">
@@ -6431,7 +4000,7 @@ export default function Home() {
                       🚀 2列目（相手本線・バイアス合致）
                     </div>
                     <div className="flex flex-col gap-1">
-                      {bettingTickets.formation_groups.main_2nd.map((h) => (
+                      {(bettingTickets.formation_groups?.main_2nd || []).map((h) => (
                         <div key={h.umaban} className="font-bold text-white">
                           {h.umaban}番 {h.bamei}{' '}
                           <span className="text-[10px] text-pink-300">
@@ -6444,11 +4013,11 @@ export default function Home() {
 
                   <div className="bg-emerald-950/40 border border-emerald-500/60 rounded-lg p-3">
                     <div className="text-emerald-300 font-bold mb-1.5">
-                      🛡️ 3列目（地力救済・特注穴ヒモ）
+                      🛡️ 3列目（地力救済・適性特注ヒモ）
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      {bettingTickets.formation_groups.saver_3rd.length > 0 ? (
-                        bettingTickets.formation_groups.saver_3rd.map((h) => (
+                      {(bettingTickets.formation_groups?.saver_3rd || []).length > 0 ? (
+                        (bettingTickets.formation_groups?.saver_3rd || []).map((h) => (
                           <div key={h.umaban} className="font-bold text-white">
                             <div>
                               {h.umaban}番 {h.bamei}{' '}
@@ -6462,7 +4031,7 @@ export default function Home() {
                               </span>
                             ) : (
                               <span className="inline-block mt-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/60 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                🛡️ 地力上位・道悪/前残り/救済
+                                🛡️ 地力上位・コース/距離/巻き返し特注
                               </span>
                             )}
                           </div>
@@ -6478,8 +4047,8 @@ export default function Home() {
                       💀 完全消し（地力下位×時計/状態難）
                     </div>
                     <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
-                      {bettingTickets.formation_groups.eliminated.length > 0 ? (
-                        bettingTickets.formation_groups.eliminated.map((h) => (
+                      {(bettingTickets.formation_groups?.eliminated || []).length > 0 ? (
+                        (bettingTickets.formation_groups?.eliminated || []).map((h) => (
                           <div key={h.umaban} className="text-gray-300 font-bold">
                             {h.umaban}番 {h.bamei}{' '}
                             <span className="text-[10px] text-red-300">({h.odds}倍)</span>
@@ -6497,11 +4066,11 @@ export default function Home() {
                     <div className="flex justify-between items-center font-bold text-amber-400 border-b border-gray-800 pb-1 mb-1.5">
                       <span>① 単勝</span>
                       <span className="bg-amber-900/40 px-2 py-0.5 rounded">
-                        計 {bettingTickets.tansho.count} 点
+                        計 {bettingTickets.tansho?.count || 0} 点
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {bettingTickets.tansho.picks.map((p) => (
+                      {(bettingTickets.tansho?.picks || []).map((p) => (
                         <span
                           key={p.umaban}
                           className="bg-gray-800 border border-gray-600 px-2 py-1 rounded font-bold text-white"
@@ -6517,11 +4086,11 @@ export default function Home() {
                     <div className="flex justify-between items-center font-bold text-sky-400 border-b border-gray-800 pb-1 mb-1.5">
                       <span>② 複勝</span>
                       <span className="bg-sky-900/40 px-2 py-0.5 rounded">
-                        計 {bettingTickets.fukusho.count} 点
+                        計 {bettingTickets.fukusho?.count || 0} 点
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {bettingTickets.fukusho.picks.map((p) => (
+                      {(bettingTickets.fukusho?.picks || []).map((p) => (
                         <span
                           key={p.umaban}
                           className="bg-gray-800 border border-gray-600 px-2 py-1 rounded font-bold text-white"
@@ -6536,15 +4105,15 @@ export default function Home() {
                     <div className="flex justify-between items-center font-bold text-pink-400 border-b border-gray-800 pb-1 mb-1.5">
                       <span>③ 基本ワイド（1列目軸 ➔ 2列目本線）</span>
                       <span className="bg-pink-900/40 px-2 py-0.5 rounded">
-                        計 {bettingTickets.wide.count} 点
+                        計 {bettingTickets.wide?.count || 0} 点
                       </span>
                     </div>
                     <div className="font-mono font-bold text-white">
-                      軸: <span className="text-yellow-300">{bettingTickets.wide.axis}番</span> ➔
-                      相手: {bettingTickets.wide.targets.join(', ')}番
+                      軸: <span className="text-yellow-300">{bettingTickets.wide?.axis}番</span> ➔
+                      相手: {(bettingTickets.wide?.targets || []).join(', ')}番
                     </div>
                     <div className="text-[11px] text-gray-400 mt-0.5">
-                      買い目: {bettingTickets.wide.combos.join(' / ')}
+                      買い目: {(bettingTickets.wide?.combos || []).join(' / ')}
                     </div>
                   </div>
                 </div>
@@ -6642,7 +4211,7 @@ export default function Home() {
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                          {axisDefensePlan.widePatterns.map((pat) =>
+                          {(axisDefensePlan.widePatterns || []).map((pat) =>
                             renderPatternCard(
                               pat,
                               'border-pink-700/50',
@@ -6665,7 +4234,7 @@ export default function Home() {
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                          {axisDefensePlan.sanrenpukuPatterns.map((pat) =>
+                          {(axisDefensePlan.sanrenpukuPatterns || []).map((pat) =>
                             renderPatternCard(
                               pat,
                               'border-emerald-700/50',
@@ -6688,7 +4257,7 @@ export default function Home() {
                           </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                          {axisDefensePlan.sanrentanPatterns.map((pat) =>
+                          {(axisDefensePlan.sanrentanPatterns || []).map((pat) =>
                             renderPatternCard(
                               pat,
                               'border-amber-600/50',
@@ -6706,7 +4275,7 @@ export default function Home() {
 
             {/* 各馬の2段階指数カード一覧 */}
             <div className="grid md:grid-cols-2 gap-4">
-              {displayedDiagnosis.map((horse) => {
+              {(displayedDiagnosis || []).map((horse) => {
                 const matchLabel = getScenarioMatchLabel(horse);
                 const mark = marksSummary?.markMap[horse.umaban];
                 const roleBadgeColor =
@@ -7443,7 +5012,7 @@ export default function Home() {
                           </tr>
                         </thead>
                         <tbody>
-                          {results.slice(0, 5).map((r) => (
+                          {(results || []).slice(0, 5).map((r) => (
                             <tr key={r.umaban} className="border-b border-gray-800/80 last:border-0">
                               <td
                                 className={`py-1.5 md:py-2 text-sm md:text-lg font-bold ${r.rank === 1 ? 'text-yellow-400' : r.rank === 2 ? 'text-gray-300' : r.rank === 3 ? 'text-orange-400' : 'text-gray-500'}`}
@@ -7486,7 +5055,7 @@ export default function Home() {
               <div
                 className={`mt-3 md:mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 transition-opacity duration-700 ${showResults ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden'}`}
               >
-                {results.map((result, index) => (
+                {(results || []).map((result, index) => (
                   <div
                     key={index}
                     className={`flex flex-col p-2 md:p-2.5 rounded-xl border ${result.rank === 1 ? 'bg-yellow-900/40 border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : result.rank <= 3 ? 'bg-gray-800 border-gray-500' : 'bg-gray-900 border-gray-800'}`}
@@ -7516,3 +5085,4 @@ export default function Home() {
     </main>
   );
 }
+// ====== ここまで page.tsx [Part 4/4 (最終行)] ======
