@@ -716,14 +716,15 @@ function computePatternAllocations(
   let sumAi = 0;
 
   for (const d of diagnosis) {
-    const rawMkt = d.odds > 1.0 ? 0.8 / d.odds : 0.05;
+    // ★新機能⑤: JRAの連勝馬券における本命過剰人気バイアス(Favorite-Longshot Bias)を補正(γ=0.90)
+    const rawMkt = d.odds > 1.0 ? Math.pow(0.8 / d.odds, 0.90) : 0.05;
     mktProbs[d.umaban] = rawMkt;
     sumMkt += rawMkt;
 
     const rawAi =
       d.norm_win_prob && d.norm_win_prob > 0
         ? d.norm_win_prob
-        : Math.exp((d.shisu - 50) / 8.5);
+        : Math.exp((d.shisu - 50) / 6.5);
     aiProbs[d.umaban] = rawAi;
     sumAi += rawAi;
   }
